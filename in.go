@@ -1,6 +1,3 @@
-// Package "in" is a universal input data extractor. Who can extracts data from
-//   - OS environment variables
-//   - CLI args
-//   - HTTP requests, i.e. querystring, form, header, JSON/XML body, and file uploads, etc.
-//   - custom data sources
+// Package "in" is a driver/framework that helps extract data
+// from all kinds of input sources. It's pluggable and extensible.
 package in
