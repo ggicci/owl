@@ -6,24 +6,22 @@ import (
 )
 
 var (
-	ErrDuplicateExecutor         = errors.New("duplicate executor")
+	ErrDuplicatedExecutor        = errors.New("duplicated executor")
 	ErrNilExecutor               = errors.New("nil executor")
-	ErrReservedDirectiveName     = errors.New("reserved directive name")
 	ErrDirectiveExecutorNotFound = errors.New("directive executor not found")
-	ErrMissingNamespace          = errors.New("missing namespace")
 )
 
-type FieldResolveError struct {
-	Err   error
-	Index int
-	Field *Resolver
+type ResolveError struct {
+	Err      error
+	Index    int
+	Resolver *Resolver
 }
 
-func (e *FieldResolveError) Error() string {
-	return fmt.Sprintf("resolve field#%d %q failed: %s", e.Index, e.Field.PathString(), e.Err)
+func (e *ResolveError) Error() string {
+	return fmt.Sprintf("resolve field#%d %q failed: %s", e.Index, e.Resolver.PathString(), e.Err)
 }
 
-func (e *FieldResolveError) Unwrap() error {
+func (e *ResolveError) Unwrap() error {
 	return e.Err
 }
 

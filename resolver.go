@@ -19,8 +19,7 @@ type Resolver struct {
 	Directives []*Directive
 	Parent     *Resolver
 	Children   []*Resolver
-
-	Context context.Context // save custom resolver settings here
+	Context    context.Context // save custom resolver settings here
 }
 
 // NewResolver builds a resolver tree from a struct value.
@@ -100,47 +99,18 @@ func (root *Resolver) Resolve(opts ...ResolveOption) (reflect.Value, error) {
 		}
 	}
 
-	// Run the directives on current field.
-	ctx := context.WithValue(context.Background(), ContextFieldSet, false)
-	// Apply resolve options.
-	for _, opt := range opts {
-		ctx = opt.Apply(ctx)
-	}
-
-	for _, directive := range root.Directives {
-		exeRuntime := &DirectiveRuntime{
-			DirectiveBuildtime: DirectiveBuildtime{
-				Directive: directive,
-				Resolver:  root,
-			},
-			Context: ctx,
-			value:   rootValue,
-		}
-
-		exe := LookupExecutor(directive.Name)
-		if exe == nil {
-			return rootValue, &DirectiveExecutionError{
-				Err:       ErrDirectiveExecutorNotFound,
-				Directive: *directive,
-			}
-		}
-
-		if err := exe.Execute(exeRuntime); err != nil {
-			return rootValue, &DirectiveExecutionError{
-				Err:       err,
-				Directive: *directive,
-			}
-		}
+	if err := root.runDirectives(rootValue, opts...); err != nil {
+		return rootValue, err
 	}
 
 	// Resolve the children fields.
-	for i, field := range root.Children {
-		fieldValue, err := field.Resolve(opts...)
+	for i, child := range root.Children {
+		fieldValue, err := child.Resolve(opts...)
 		if err != nil {
-			return rootValue, &FieldResolveError{
-				Err:   err,
-				Index: i,
-				Field: field,
+			return rootValue, &ResolveError{
+				Err:      err,
+				Index:    i,
+				Resolver: child,
 			}
 		}
 		rootValue.Elem().Field(i).Set(fieldValue.Elem())
@@ -149,25 +119,37 @@ func (root *Resolver) Resolve(opts ...ResolveOption) (reflect.Value, error) {
 	return rootValue, nil
 }
 
-func (r *Resolver) buildDirectives(directives []*Directive) error {
-	newDiretives := make([]*Directive, 0, len(directives))
-	for _, d := range directives {
-		exe := LookupExecutor(d.Name)
-		if builder, ok := exe.(DirectiveBuild); ok && exe != nil {
-			if err := builder.Build(&DirectiveBuildtime{
-				Resolver:  r,
-				Directive: d,
-			}); err != nil {
-				return fmt.Errorf("build directvie %q failed: %w", d.Name, err)
-			}
+func (r *Resolver) runDirectives(rv reflect.Value, opts ...ResolveOption) error {
+	// Run the directives on current field.
+	ctx := context.Background()
+	// Apply resolve options.
+	for _, opt := range opts {
+		ctx = opt.Apply(ctx)
+	}
+	for _, directive := range r.Directives {
+		exeRuntime := &DirectiveRuntime{
+			Directive: directive,
+			Resolver:  r,
+			Context:   ctx,
+			Value:     rv,
+		}
 
-			if builder.NoRuntime() {
-				continue
+		exe := LookupExecutor(directive.Name)
+		if exe == nil {
+			return &DirectiveExecutionError{
+				Err:       ErrDirectiveExecutorNotFound,
+				Directive: *directive,
 			}
 		}
-		newDiretives = append(newDiretives, d)
+
+		if err := exe.Execute(exeRuntime); err != nil {
+			return &DirectiveExecutionError{
+				Err:       err,
+				Directive: *directive,
+			}
+		}
 	}
-	r.Directives = newDiretives
+
 	return nil
 }
 
@@ -252,9 +234,7 @@ func buildResolver(t reflect.Type, field reflect.StructField, parent *Resolver) 
 		if err != nil {
 			return nil, fmt.Errorf("parse directives: %v", err)
 		}
-		if err := root.buildDirectives(directives); err != nil {
-			return nil, err
-		}
+		root.Directives = directives
 		root.Path = append(root.Parent.Path, field.Name)
 	}
 
