@@ -31,7 +31,7 @@ type DirectiveExecutionError struct {
 }
 
 func (e *DirectiveExecutionError) Error() string {
-	return fmt.Sprintf("execute directive %q failed: %s", e.Directive.Name, e.Err)
+	return fmt.Sprintf("execute directive %q with args %v failed: %s", e.Directive.Name, e.Directive.Argv, e.Err)
 }
 
 func (e *DirectiveExecutionError) Unwrap() error {

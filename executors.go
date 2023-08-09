@@ -49,7 +49,11 @@ func LookupExecutor(name string) DirectiveExecutor {
 	return executors[name]
 }
 
-// DirectiveRuntime is the execution runtime/context of a directive.
+// DirectiveRuntime is the execution runtime/context of a directive. NOTE: the
+// Directive and Resolver are both exported for the convenience but in an unsafe
+// way. The user should not modify them. If you want to modify them, please call
+// Resolver.Iterate to iterate the resolvers and modify them in the callback.
+// And make sure this be done before any callings to Resolver.Resolve.
 type DirectiveRuntime struct {
 	Directive *Directive
 	Resolver  *Resolver

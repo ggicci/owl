@@ -89,23 +89,32 @@ func iterateTree(root *Resolver, fn func(*Resolver) error) error {
 
 // Resolve resolves the resolver tree from a data source.
 // It iterates the tree by depth-first, and runs the directives on each field.
-func (root *Resolver) Resolve(opts ...ResolveOption) (reflect.Value, error) {
-	rootValue := reflect.New(root.Type)
-
-	if !root.IsRoot() {
-		// Skip unexported fields by default.
-		if !root.Field.IsExported() {
-			return rootValue, nil
-		}
+func (r *Resolver) Resolve(opts ...ResolveOption) (reflect.Value, error) {
+	ctx := context.Background()
+	// Apply resolve options.
+	for _, opt := range opts {
+		ctx = opt.Apply(ctx)
 	}
 
-	if err := root.runDirectives(rootValue, opts...); err != nil {
+	return r.resolve(ctx)
+}
+
+func (root *Resolver) resolve(ctx context.Context) (reflect.Value, error) {
+	rootValue := reflect.New(root.Type)
+
+	// Skip unexported fields by default.
+	if !root.IsRoot() && !root.Field.IsExported() {
+		return rootValue, nil
+	}
+
+	// Run the directives on current field.
+	if err := root.runDirectives(ctx, rootValue); err != nil {
 		return rootValue, err
 	}
 
 	// Resolve the children fields.
 	for i, child := range root.Children {
-		fieldValue, err := child.Resolve(opts...)
+		fieldValue, err := child.resolve(ctx)
 		if err != nil {
 			return rootValue, &ResolveError{
 				Err:      err,
@@ -119,15 +128,9 @@ func (root *Resolver) Resolve(opts ...ResolveOption) (reflect.Value, error) {
 	return rootValue, nil
 }
 
-func (r *Resolver) runDirectives(rv reflect.Value, opts ...ResolveOption) error {
-	// Run the directives on current field.
-	ctx := context.Background()
-	// Apply resolve options.
-	for _, opt := range opts {
-		ctx = opt.Apply(ctx)
-	}
+func (r *Resolver) runDirectives(ctx context.Context, rv reflect.Value) error {
 	for _, directive := range r.Directives {
-		exeRuntime := &DirectiveRuntime{
+		dirRuntime := &DirectiveRuntime{
 			Directive: directive,
 			Resolver:  r,
 			Context:   ctx,
@@ -142,7 +145,7 @@ func (r *Resolver) runDirectives(rv reflect.Value, opts ...ResolveOption) error 
 			}
 		}
 
-		if err := exe.Execute(exeRuntime); err != nil {
+		if err := exe.Execute(dirRuntime); err != nil {
 			return &DirectiveExecutionError{
 				Err:       err,
 				Directive: *directive,
