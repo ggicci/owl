@@ -1,4 +1,4 @@
-module github.com/ggicci/in
+module github.com/ggicci/rstruct
 
 go 1.19
 

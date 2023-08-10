@@ -1,4 +1,4 @@
-package in
+package rstruct
 
 import (
 	"fmt"
@@ -47,7 +47,7 @@ func NewBuildResolverTreeTestSuite(inputValue interface{}, expected []*expectedF
 }
 
 func (s *BuildResolverTreeTestSuite) SetupTest() {
-	tree, err := NewResolver(s.inputValue)
+	tree, err := New(s.inputValue)
 	assert.NoError(s.T(), err)
 	assert.NotNil(s.T(), tree)
 	s.tree = tree
@@ -157,11 +157,11 @@ func TestTreeDebugLayout(t *testing.T) {
 		err  error
 	)
 
-	tree, err = NewResolver(UserSignUpForm{})
+	tree, err = New(UserSignUpForm{})
 	assert.NoError(t, err)
 	fmt.Println(tree.DebugLayoutText(0))
 
-	tree, err = NewResolver(Pagination{})
+	tree, err = New(Pagination{})
 	assert.NoError(t, err)
 	fmt.Println(tree.DebugLayoutText(0))
 }

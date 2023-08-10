@@ -1,2 +1,3 @@
-# in
-Universal input package. Get your data from all kinds of input sources, including HTTP requests, environment variables, CLI args, etc.
+# rstruct
+
+A framework and driver to easily implement algorithms on Go structs with custom directives defined in struct tags.

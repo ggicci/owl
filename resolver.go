@@ -1,4 +1,4 @@
-package in
+package rstruct
 
 import (
 	"context"
@@ -22,8 +22,8 @@ type Resolver struct {
 	Context    context.Context // save custom resolver settings here
 }
 
-// NewResolver builds a resolver tree from a struct value.
-func NewResolver(structValue interface{}) (*Resolver, error) {
+// New builds a resolver tree from a struct value.
+func New(structValue interface{}) (*Resolver, error) {
 	typ, err := reflectStructType(structValue)
 	if err != nil {
 		return nil, err

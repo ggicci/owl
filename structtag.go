@@ -1,4 +1,4 @@
-package in
+package rstruct
 
 var (
 	tagName = "in"
