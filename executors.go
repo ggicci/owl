@@ -1,4 +1,4 @@
-package rstruct
+package viper
 
 import (
 	"context"

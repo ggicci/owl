@@ -1,4 +1,4 @@
-module github.com/ggicci/rstruct
+module github.com/ggicci/viper
 
 go 1.19
 

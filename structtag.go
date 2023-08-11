@@ -1,4 +1,4 @@
-package rstruct
+package viper
 
 var (
 	tagName = "in"
