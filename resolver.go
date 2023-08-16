@@ -233,7 +233,7 @@ func buildResolver(t reflect.Type, field reflect.StructField, parent *Resolver) 
 	}
 
 	if !root.IsRoot() {
-		directives, err := parseDirectives(field.Tag.Get(tagName))
+		directives, err := parseDirectives(field.Tag.Get(Tag()))
 		if err != nil {
 			return nil, fmt.Errorf("parse directives: %v", err)
 		}
