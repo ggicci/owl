@@ -6,10 +6,23 @@ import (
 )
 
 var (
+	ErrInvalidExecutorName       = errors.New("invalid executor name")
 	ErrDuplicatedExecutor        = errors.New("duplicated executor")
 	ErrNilExecutor               = errors.New("nil executor")
 	ErrDirectiveExecutorNotFound = errors.New("directive executor not found")
 )
+
+func invalidExecutorName(name string) error {
+	return fmt.Errorf("%w: %q", ErrInvalidExecutorName, name)
+}
+
+func duplicatedExecutor(name string) error {
+	return fmt.Errorf("%w: %q", ErrDuplicatedExecutor, name)
+}
+
+func nilExecutor(name string) error {
+	return fmt.Errorf("%w: %q", ErrNilExecutor, name)
+}
 
 type ResolveError struct {
 	Err      error

@@ -2,6 +2,39 @@ package viper
 
 import "context"
 
+type Option interface {
+	Apply(*Resolver) error
+}
+
+type withNamespace struct {
+	ns *Namespace
+}
+
+func (wn *withNamespace) Apply(r *Resolver) error {
+	r.Context = context.WithValue(r.Context, ckNamespace, wn.ns)
+	return nil
+}
+
+func WithNamespace(ns *Namespace) Option {
+	return &withNamespace{ns}
+}
+
+func normalizeOptions(opts []Option) []Option {
+	hasNamespace := false
+	for _, opt := range opts {
+		if opt.(*withNamespace) != nil {
+			hasNamespace = true
+			break
+		}
+	}
+
+	// Add default namespace if no namespace option provided.
+	if !hasNamespace {
+		opts = append(opts, WithNamespace(defaultNS))
+	}
+	return opts
+}
+
 type ResolveOption interface {
 	Apply(context.Context) context.Context
 }

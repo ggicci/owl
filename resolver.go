@@ -23,17 +23,36 @@ type Resolver struct {
 }
 
 // New builds a resolver tree from a struct value.
-func New(structValue interface{}) (*Resolver, error) {
+func New(structValue interface{}, opts ...Option) (*Resolver, error) {
 	typ, err := reflectStructType(structValue)
 	if err != nil {
 		return nil, err
 	}
 
-	return buildResolverTree(typ)
+	tree, err := buildResolverTree(typ)
+	if err != nil {
+		return nil, err
+	}
+
+	opts = normalizeOptions(opts)
+
+	// Apply options to each resolver.
+	if err := tree.Iterate(func(r *Resolver) error {
+		for _, opt := range opts {
+			if err := opt.Apply(r); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return tree, nil
 }
 
 func (r *Resolver) String() string {
-	return fmt.Sprintf("%v (%s)", r.Path, r.Type)
+	return fmt.Sprintf("%v (%v)", r.Path, r.Type)
 }
 
 func (r *Resolver) IsRoot() bool {
@@ -48,7 +67,7 @@ func (r *Resolver) PathString() string {
 	return strings.Join(r.Path, ".")
 }
 
-func (r *Resolver) DirectiveByName(name string) *Directive {
+func (r *Resolver) GetDirective(name string) *Directive {
 	for _, d := range r.Directives {
 		if d.Name == name {
 			return d
@@ -128,7 +147,13 @@ func (root *Resolver) resolve(ctx context.Context) (reflect.Value, error) {
 	return rootValue, nil
 }
 
+func (r *Resolver) Namespace() *Namespace {
+	return r.Context.Value(ckNamespace).(*Namespace)
+}
+
 func (r *Resolver) runDirectives(ctx context.Context, rv reflect.Value) error {
+	ns := r.Namespace()
+
 	for _, directive := range r.Directives {
 		dirRuntime := &DirectiveRuntime{
 			Directive: directive,
@@ -136,8 +161,7 @@ func (r *Resolver) runDirectives(ctx context.Context, rv reflect.Value) error {
 			Context:   ctx,
 			Value:     rv,
 		}
-
-		exe := LookupExecutor(directive.Name)
+		exe := ns.LookupExecutor(directive.Name)
 		if exe == nil {
 			return &DirectiveExecutionError{
 				Err:       ErrDirectiveExecutorNotFound,
@@ -214,7 +238,7 @@ func reflectStructType(structValue interface{}) (reflect.Type, error) {
 	}
 
 	if typ.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("not a struct type: %s", typ)
+		return nil, fmt.Errorf("not a struct type: %v", typ)
 	}
 
 	return typ, nil
@@ -227,9 +251,10 @@ func buildResolverTree(st reflect.Type) (*Resolver, error) {
 
 func buildResolver(t reflect.Type, field reflect.StructField, parent *Resolver) (*Resolver, error) {
 	root := &Resolver{
-		Type:   t,
-		Field:  field,
-		Parent: parent,
+		Type:    t,
+		Field:   field,
+		Parent:  parent,
+		Context: context.Background(),
 	}
 
 	if !root.IsRoot() {
@@ -247,9 +272,17 @@ func buildResolver(t reflect.Type, field reflect.StructField, parent *Resolver) 
 	if t.Kind() == reflect.Struct {
 		for i := 0; i < t.NumField(); i++ {
 			field := t.Field(i)
+
+			// Skip unexported fields. Because we can't set value to them, nor
+			// get value from them by reflection.
+			if !field.IsExported() {
+				continue
+			}
+
 			child, err := buildResolver(field.Type, field, root)
 			if err != nil {
-				return nil, fmt.Errorf("build field resolver: %v", err)
+				path := append(root.Path, field.Name)
+				return nil, fmt.Errorf("build resolver for %q failed: %v", strings.Join(path, "."), err)
 			}
 			root.Children = append(root.Children, child)
 		}

@@ -11,7 +11,7 @@ import (
 
 type Pagination struct {
 	Page   int  `viper:"form=page"`
-	hidden bool `viper:"form=hidden"`
+	hidden bool `viper:"form=hidden"` // should be ignored
 	Size   int  `viper:"form=size"`
 }
 
@@ -85,16 +85,9 @@ func TestBuildResolverTree(t *testing.T) {
 					viper.NewDirective("form", "page"),
 				},
 			},
+			// hidden field should be ignored
 			{
 				Index:      []int{1},
-				LookupPath: "hidden",
-				NumFields:  0,
-				Directives: []*viper.Directive{
-					viper.NewDirective("form", "hidden"),
-				},
-			},
-			{
-				Index:      []int{2},
 				LookupPath: "Size",
 				NumFields:  0,
 				Directives: []*viper.Directive{
@@ -156,9 +149,10 @@ func TestResolveSimpleFlatStruct(t *testing.T) {
 	assert := assert.New(t)
 
 	tracker := &ExecutionTracker{}
-	viper.ReplaceDirectiveExecutor("env", NewEchoExecutor(tracker, "env"))
-	viper.ReplaceDirectiveExecutor("form", NewEchoExecutor(tracker, "form"))
-	viper.ReplaceDirectiveExecutor("default", NewEchoExecutor(tracker, "default"))
+	ns := viper.NewNamespace()
+	ns.ReplaceDirectiveExecutor("env", NewEchoExecutor(tracker, "env"))
+	ns.ReplaceDirectiveExecutor("form", NewEchoExecutor(tracker, "form"))
+	ns.ReplaceDirectiveExecutor("default", NewEchoExecutor(tracker, "default"))
 
 	type GenerateAccessTokenRequest struct {
 		Key      string `viper:"env=ACCESS_TOKEN_KEY_GENERATION_KEY"`
@@ -166,7 +160,7 @@ func TestResolveSimpleFlatStruct(t *testing.T) {
 		Expiry   int    `viper:"form=expiry;default=3600"`
 	}
 
-	resolver, err := viper.New(GenerateAccessTokenRequest{})
+	resolver, err := viper.New(GenerateAccessTokenRequest{}, viper.WithNamespace(ns))
 	assert.NoError(err)
 
 	_, err = resolver.Resolve()
@@ -184,8 +178,9 @@ func TestResolveEmbeddedStruct(t *testing.T) {
 	assert := assert.New(t)
 
 	tracker := &ExecutionTracker{}
-	viper.ReplaceDirectiveExecutor("form", NewEchoExecutor(tracker, "form"))
-	viper.ReplaceDirectiveExecutor("default", NewEchoExecutor(tracker, "default"))
+	ns := viper.NewNamespace()
+	ns.ReplaceDirectiveExecutor("form", NewEchoExecutor(tracker, "form"))
+	ns.ReplaceDirectiveExecutor("default", NewEchoExecutor(tracker, "default"))
 
 	type UserFilter struct {
 		Gender string   `viper:"form=gender"`
@@ -203,7 +198,7 @@ func TestResolveEmbeddedStruct(t *testing.T) {
 		Pagination
 	}
 
-	resolver, err := viper.New(UserListQuery{})
+	resolver, err := viper.New(UserListQuery{}, viper.WithNamespace(ns))
 	assert.NoError(err)
 
 	_, err = resolver.Resolve()
