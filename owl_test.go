@@ -22,9 +22,9 @@ func TestEnvReader(t *testing.T) {
 	owl.RegisterDirectiveExecutor("env", owl.DirectiveExecutorFunc(exeEnvReader))
 
 	type EnvConfig struct {
-		Workspace string `viper:"env=VIPER_HOME"`
-		User      string `viper:"env=VIPER_USER"`
-		Debug     string `viper:"env=VIPER_DEBUG"`
+		Workspace string `owl:"env=OWL_HOME"`
+		User      string `owl:"env=OWL_USER"`
+		Debug     string `owl:"env=OWL_DEBUG"`
 	}
 
 	v, err := owl.New(EnvConfig{})
@@ -32,8 +32,8 @@ func TestEnvReader(t *testing.T) {
 	assert.NotNil(v)
 
 	// Set environment variables.
-	os.Setenv("VIPER_HOME", "/home/ggicci/.viper")
-	os.Setenv("VIPER_USER", "viper")
+	os.Setenv("OWL_HOME", "/home/ggicci/.owl")
+	os.Setenv("OWL_USER", "owl")
 
 	// Resolve.
 	gotValue, err := v.Resolve()
@@ -41,7 +41,7 @@ func TestEnvReader(t *testing.T) {
 	assert.NotNil(gotValue)
 	gotConfig, ok := gotValue.Interface().(*EnvConfig)
 	assert.True(ok)
-	assert.Equal("/home/ggicci/.viper", gotConfig.Workspace)
-	assert.Equal("viper", gotConfig.User)
+	assert.Equal("/home/ggicci/.owl", gotConfig.Workspace)
+	assert.Equal("owl", gotConfig.User)
 	assert.Equal("", gotConfig.Debug)
 }

@@ -10,20 +10,20 @@ import (
 )
 
 type Pagination struct {
-	Page   int  `viper:"form=page"`
-	hidden bool `viper:"form=hidden"` // should be ignored
-	Size   int  `viper:"form=size"`
+	Page   int  `owl:"form=page"`
+	hidden bool `owl:"form=hidden"` // should be ignored
+	Size   int  `owl:"form=size"`
 }
 
 type User struct {
-	Name     string `viper:"form=name"`
-	Gender   string `viper:"form=gender;default=unknown"`
-	Birthday string `viper:"form=birthday"`
+	Name     string `owl:"form=name"`
+	Gender   string `owl:"form=gender;default=unknown"`
+	Birthday string `owl:"form=birthday"`
 }
 
 type UserSignUpForm struct {
-	User      User   `viper:"form=user"`
-	CSRFToken string `viper:"form=csrf_token"`
+	User      User   `owl:"form=user"`
+	CSRFToken string `owl:"form=csrf_token"`
 }
 
 type expectedResolver struct {
@@ -155,9 +155,9 @@ func TestResolveSimpleFlatStruct(t *testing.T) {
 	ns.ReplaceDirectiveExecutor("default", NewEchoExecutor(tracker, "default"))
 
 	type GenerateAccessTokenRequest struct {
-		Key      string `viper:"env=ACCESS_TOKEN_KEY_GENERATION_KEY"`
-		UserName string `viper:"form=username"`
-		Expiry   int    `viper:"form=expiry;default=3600"`
+		Key      string `owl:"env=ACCESS_TOKEN_KEY_GENERATION_KEY"`
+		UserName string `owl:"form=username"`
+		Expiry   int    `owl:"form=expiry;default=3600"`
 	}
 
 	resolver, err := owl.New(GenerateAccessTokenRequest{}, owl.WithNamespace(ns))
@@ -183,14 +183,14 @@ func TestResolveEmbeddedStruct(t *testing.T) {
 	ns.ReplaceDirectiveExecutor("default", NewEchoExecutor(tracker, "default"))
 
 	type UserFilter struct {
-		Gender string   `viper:"form=gender"`
-		Ages   []int    `viper:"form=age,age[];default=18,999"`
-		Roles  []string `viper:"form=roles,roles[]"`
+		Gender string   `owl:"form=gender"`
+		Ages   []int    `owl:"form=age,age[];default=18,999"`
+		Roles  []string `owl:"form=roles,roles[]"`
 	}
 
 	type Pagination struct {
-		Page int `viper:"form=page"`
-		Size int `viper:"form=size"`
+		Page int `owl:"form=page"`
+		Size int `owl:"form=size"`
 	}
 
 	type UserListQuery struct {

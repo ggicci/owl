@@ -1,6 +1,6 @@
 package owl
 
-const DefaultTagName = "viper"
+const DefaultTagName = "owl"
 
 var tagName string = DefaultTagName
 
