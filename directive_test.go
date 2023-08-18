@@ -1,21 +1,21 @@
-package viper_test
+package owl_test
 
 import (
 	"errors"
 	"testing"
 
-	"github.com/ggicci/viper"
+	"github.com/ggicci/owl"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewDirective(t *testing.T) {
 	assert := assert.New(t)
 
-	d1 := viper.NewDirective("form")
+	d1 := owl.NewDirective("form")
 	assert.Equal("form", d1.Name)
 	assert.Len(d1.Argv, 0)
 
-	d2 := viper.NewDirective("form", "page", "page_index")
+	d2 := owl.NewDirective("form", "page", "page_index")
 	assert.Equal("form", d2.Name)
 	assert.NotNil(d2.Argv)
 	assert.Len(d2.Argv, 2)
@@ -26,43 +26,43 @@ func TestNewDirective(t *testing.T) {
 func TestParseDirective(t *testing.T) {
 	testcases := []struct {
 		content  string
-		expected *viper.Directive
+		expected *owl.Directive
 		err      error
 	}{
 		{
 			content:  "form",
-			expected: viper.NewDirective("form"),
+			expected: owl.NewDirective("form"),
 			err:      nil,
 		},
 		{
 			content:  "form=page,page_index",
-			expected: viper.NewDirective("form", "page", "page_index"),
+			expected: owl.NewDirective("form", "page", "page_index"),
 			err:      nil,
 		},
 		{
 			content:  "header=x-api-token",
-			expected: viper.NewDirective("header", "x-api-token"),
+			expected: owl.NewDirective("header", "x-api-token"),
 			err:      nil,
 		},
 		{
 			content:  "",
 			expected: nil,
-			err:      viper.ErrInvalidExecutorName,
+			err:      owl.ErrInvalidExecutorName,
 		},
 		{
 			content:  "=name",
 			expected: nil,
-			err:      viper.ErrInvalidExecutorName,
+			err:      owl.ErrInvalidExecutorName,
 		},
 		{
 			content:  "    =name",
 			expected: nil,
-			err:      viper.ErrInvalidExecutorName,
+			err:      owl.ErrInvalidExecutorName,
 		},
 	}
 
 	for _, testcase := range testcases {
-		directive, err := viper.ParseDirective(testcase.content)
+		directive, err := owl.ParseDirective(testcase.content)
 		assert.Equal(t, testcase.expected, directive)
 		assert.True(t, errors.Is(err, testcase.err))
 	}

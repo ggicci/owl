@@ -1,3 +1,3 @@
-# Viper
+# Owl
 
-A framework and driver to easily implement algorithms on Go structs with custom directives defined in struct tags.
+Owl is a Go package that provides algorithmic guidance through structured directives using Go struct tags.

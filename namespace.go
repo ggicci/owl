@@ -1,4 +1,4 @@
-package viper
+package owl
 
 var (
 	defaultNS = NewNamespace()

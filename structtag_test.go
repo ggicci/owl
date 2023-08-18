@@ -1,15 +1,15 @@
-package viper_test
+package owl_test
 
 import (
 	"testing"
 
-	"github.com/ggicci/viper"
+	"github.com/ggicci/owl"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestUseTag(t *testing.T) {
-	viper.UseTag("custom")
-	assert.Equal(t, "custom", viper.Tag())
+	owl.UseTag("custom")
+	assert.Equal(t, "custom", owl.Tag())
 
-	viper.UseTag(viper.DefaultTagName) // reset to default in case other tests fail
+	owl.UseTag(owl.DefaultTagName) // reset to default in case other tests fail
 }

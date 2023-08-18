@@ -1,4 +1,4 @@
-module github.com/ggicci/viper
+module github.com/ggicci/owl
 
 go 1.19
 

@@ -1,14 +1,14 @@
-package viper_test
+package owl_test
 
 import (
 	"os"
 	"testing"
 
-	"github.com/ggicci/viper"
+	"github.com/ggicci/owl"
 	"github.com/stretchr/testify/assert"
 )
 
-func exeEnvReader(rtm *viper.DirectiveRuntime) error {
+func exeEnvReader(rtm *owl.DirectiveRuntime) error {
 	if len(rtm.Directive.Argv) == 0 {
 		return nil
 	}
@@ -19,7 +19,7 @@ func exeEnvReader(rtm *viper.DirectiveRuntime) error {
 
 func TestEnvReader(t *testing.T) {
 	assert := assert.New(t)
-	viper.RegisterDirectiveExecutor("env", viper.DirectiveExecutorFunc(exeEnvReader))
+	owl.RegisterDirectiveExecutor("env", owl.DirectiveExecutorFunc(exeEnvReader))
 
 	type EnvConfig struct {
 		Workspace string `viper:"env=VIPER_HOME"`
@@ -27,7 +27,7 @@ func TestEnvReader(t *testing.T) {
 		Debug     string `viper:"env=VIPER_DEBUG"`
 	}
 
-	v, err := viper.New(EnvConfig{})
+	v, err := owl.New(EnvConfig{})
 	assert.NoError(err)
 	assert.NotNil(v)
 
