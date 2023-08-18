@@ -132,16 +132,27 @@ func (root *Resolver) resolve(ctx context.Context) (reflect.Value, error) {
 	}
 
 	// Resolve the children fields.
-	for i, child := range root.Children {
-		fieldValue, err := child.resolve(ctx)
-		if err != nil {
-			return rootValue, &ResolveError{
-				Err:      err,
-				Index:    i,
-				Resolver: child,
-			}
+	if len(root.Children) > 0 {
+		// If the root is a pointer, we need to allocate memory for it.
+		// We only expect it's a one-level pointer, e.g. *User, not **User.
+		underlyingValue := rootValue
+		if root.Type.Kind() == reflect.Ptr {
+			underlyingValue = reflect.New(root.Type.Elem())
+			rootValue.Elem().Set(underlyingValue)
 		}
-		rootValue.Elem().Field(i).Set(fieldValue.Elem())
+
+		for i, child := range root.Children {
+			fieldValue, err := child.resolve(ctx)
+			if err != nil {
+				return rootValue, &ResolveError{
+					Err:      err,
+					Index:    i,
+					Resolver: child,
+				}
+			}
+
+			underlyingValue.Elem().Field(i).Set(fieldValue.Elem())
+		}
 	}
 
 	return rootValue, nil
@@ -269,6 +280,7 @@ func buildResolver(t reflect.Type, field reflect.StructField, parent *Resolver) 
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
+
 	if t.Kind() == reflect.Struct {
 		for i := 0; i < t.NumField(); i++ {
 			field := t.Field(i)
