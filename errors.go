@@ -6,18 +6,24 @@ import (
 )
 
 var (
-	ErrInvalidExecutorName       = errors.New("invalid executor name")
-	ErrDuplicatedExecutor        = errors.New("duplicated executor")
-	ErrNilExecutor               = errors.New("nil executor")
-	ErrDirectiveExecutorNotFound = errors.New("directive executor not found")
+	ErrNilNamespace         = errors.New("nil namespace")
+	ErrInvalidDirectiveName = errors.New("invalid directive/executor name")
+	ErrDuplicateExecutor    = errors.New("duplicate executor")
+	ErrDuplicateDirective   = errors.New("duplicate directive")
+	ErrNilExecutor          = errors.New("nil executor")
+	ErrMissingExecutor      = errors.New("missing executor")
 )
 
-func invalidExecutorName(name string) error {
-	return fmt.Errorf("%w: %q", ErrInvalidExecutorName, name)
+func invalidDirectiveName(name string) error {
+	return fmt.Errorf("%w: %q (should comply with %s)", ErrInvalidDirectiveName, name, reDirectiveName.String())
 }
 
-func duplicatedExecutor(name string) error {
-	return fmt.Errorf("%w: %q", ErrDuplicatedExecutor, name)
+func duplicateExecutor(name string) error {
+	return fmt.Errorf("%w: %q (registered to the same namespace)", ErrDuplicateExecutor, name)
+}
+
+func duplicateDirective(name string) error {
+	return fmt.Errorf("%w: %q (defined in the same struct tag)", ErrDuplicateDirective, name)
 }
 
 func nilExecutor(name string) error {
@@ -26,12 +32,11 @@ func nilExecutor(name string) error {
 
 type ResolveError struct {
 	Err      error
-	Index    int
 	Resolver *Resolver
 }
 
 func (e *ResolveError) Error() string {
-	return fmt.Sprintf("resolve field#%d %q failed: %s", e.Index, e.Resolver.PathString(), e.Err)
+	return fmt.Sprintf("resolve field %q failed: %s", e.Resolver.String(), e.Err)
 }
 
 func (e *ResolveError) Unwrap() error {

@@ -3,8 +3,11 @@ package owl
 import (
 	"context"
 	"reflect"
+	"regexp"
 	"strings"
 )
+
+var reDirectiveName = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
 // Directive defines the profile to locate a `DirectiveExecutor` instance
 // and drives it with essential arguments.
@@ -26,25 +29,29 @@ func NewDirective(name string, argv ...string) *Directive {
 //
 // Example directives are:
 //
-//	"form=page,page_index" -> { Executor: "form", Args: ["page", "page_index"] }
-//	"header=x-api-token"   -> { Executor: "header", Args: ["x-api-token"] }
+//	"form=page,page_index" -> { Name: "form", Args: ["page", "page_index"] }
+//	"header=x-api-token"   -> { Name: "header", Args: ["x-api-token"] }
 func ParseDirective(directive string) (*Directive, error) {
 	directive = strings.TrimSpace(directive)
 	parts := strings.SplitN(directive, "=", 2)
-	executor := parts[0]
+	name := parts[0]
 	var argv []string
 	if len(parts) == 2 {
 		// Split the remained string by delimiter `,` as argv.
 		// NOTE: the whiltespaces are kept here.
-		// e.g. "query=page, index" -> { Executor: "query", Args: ["page", " index"] }
+		// e.g. "query=page, index" -> { Name: "query", Args: ["page", " index"] }
 		argv = strings.Split(parts[1], ",")
 	}
 
-	if executor == "" {
-		return nil, invalidExecutorName(executor)
+	if !isValidDirectiveName(name) {
+		return nil, invalidDirectiveName(name)
 	}
 
-	return NewDirective(executor, argv...), nil
+	return NewDirective(name, argv...), nil
+}
+
+func isValidDirectiveName(name string) bool {
+	return reDirectiveName.MatchString(name)
 }
 
 // DirectiveExecutor is the interface that wraps the Execute method.

@@ -1,7 +1,6 @@
 package owl_test
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/ggicci/owl"
@@ -47,23 +46,23 @@ func TestParseDirective(t *testing.T) {
 		{
 			content:  "",
 			expected: nil,
-			err:      owl.ErrInvalidExecutorName,
+			err:      owl.ErrInvalidDirectiveName,
 		},
 		{
 			content:  "=name",
 			expected: nil,
-			err:      owl.ErrInvalidExecutorName,
+			err:      owl.ErrInvalidDirectiveName,
 		},
 		{
 			content:  "    =name",
 			expected: nil,
-			err:      owl.ErrInvalidExecutorName,
+			err:      owl.ErrInvalidDirectiveName,
 		},
 	}
 
 	for _, testcase := range testcases {
 		directive, err := owl.ParseDirective(testcase.content)
 		assert.Equal(t, testcase.expected, directive)
-		assert.True(t, errors.Is(err, testcase.err))
+		assert.ErrorIs(t, err, testcase.err)
 	}
 }

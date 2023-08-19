@@ -1,7 +1,10 @@
 package owl_test
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/ggicci/owl"
@@ -10,9 +13,8 @@ import (
 )
 
 type Pagination struct {
-	Page   int  `owl:"form=page"`
-	hidden bool `owl:"form=hidden"` // should be ignored
-	Size   int  `owl:"form=size"`
+	Page int `owl:"form=page"`
+	Size int `owl:"form=size"`
 }
 
 type User struct {
@@ -27,10 +29,11 @@ type UserSignUpForm struct {
 }
 
 type expectedResolver struct {
-	Index      []int
+	Index      int
 	LookupPath string
 	NumFields  int
 	Directives []*owl.Directive
+	Leaf       bool
 }
 
 type BuildResolverTreeTestSuite struct {
@@ -54,45 +57,51 @@ func (s *BuildResolverTreeTestSuite) SetupTest() {
 	s.tree = tree
 }
 
-func (s *BuildResolverTreeTestSuite) Test_0_Path_Lookup() {
+func (s *BuildResolverTreeTestSuite) Test_0_Lookup_IsLeaf() {
 	assert := assert.New(s.T())
 	for _, expected := range s.expected {
-		fieldByIndex := s.tree.LookupByIndex(expected.Index)
-		fieldByName := s.tree.Lookup(expected.LookupPath)
-		assert.NotNil(fieldByIndex)
-		assert.Equal(fieldByIndex, fieldByName)
-		assert.Equal(expected.LookupPath, fieldByIndex.PathString())
+		resolver := s.tree.Lookup(expected.LookupPath)
+		assert.Nil(s.tree.Lookup("SomeNonExistingPath"))
+		assert.NotNil(resolver)
+		assert.Equal(expected.Index, resolver.Index)
+		assert.Equal(expected.NumFields, len(resolver.Children))
+		assert.Equal(expected.Directives, resolver.Directives)
+		assert.Equal(expected.Leaf, resolver.IsLeaf())
 	}
 }
 
-func (s *BuildResolverTreeTestSuite) Test_1_Directives() {
+func (s *BuildResolverTreeTestSuite) Test_1_GetDirective() {
 	assert := assert.New(s.T())
 	for _, expected := range s.expected {
-		field := s.tree.Lookup(expected.LookupPath)
-		assert.Equal(expected.Directives, field.Directives)
+		resolver := s.tree.Lookup(expected.LookupPath)
+		for _, directive := range expected.Directives {
+			assert.Equal(directive, resolver.GetDirective(directive.Name))
+			assert.Nil(resolver.GetDirective("SomeNonExistingDirective"))
+		}
 	}
 }
 
-func TestBuildResolverTree(t *testing.T) {
+func TestNew_NormalCasesSuites(t *testing.T) {
 	suite.Run(t, NewBuildResolverTreeTestSuite(
 		Pagination{},
 		[]*expectedResolver{
 			{
-				Index:      []int{0},
+				Index:      0,
 				LookupPath: "Page",
 				NumFields:  0,
 				Directives: []*owl.Directive{
 					owl.NewDirective("form", "page"),
 				},
+				Leaf: true,
 			},
-			// hidden field should be ignored
 			{
-				Index:      []int{1},
+				Index:      1,
 				LookupPath: "Size",
 				NumFields:  0,
 				Directives: []*owl.Directive{
 					owl.NewDirective("form", "size"),
 				},
+				Leaf: true,
 			},
 		},
 	))
@@ -101,51 +110,107 @@ func TestBuildResolverTree(t *testing.T) {
 		UserSignUpForm{},
 		[]*expectedResolver{
 			{
-				Index:      []int{0},
+				Index:      0,
 				LookupPath: "User",
 				NumFields:  3,
 				Directives: []*owl.Directive{
 					owl.NewDirective("form", "user"),
 				},
+				Leaf: false,
 			},
 			{
-				Index:      []int{0, 0},
+				Index:      0,
 				LookupPath: "User.Name",
 				NumFields:  0,
 				Directives: []*owl.Directive{
 					owl.NewDirective("form", "name"),
 				},
+				Leaf: true,
 			},
 			{
-				Index:      []int{0, 1},
+				Index:      1,
 				LookupPath: "User.Gender",
 				NumFields:  0,
 				Directives: []*owl.Directive{
 					owl.NewDirective("form", "gender"),
 					owl.NewDirective("default", "unknown"),
 				},
+				Leaf: true,
 			},
 			{
-				Index:      []int{0, 2},
+				Index:      2,
 				LookupPath: "User.Birthday",
 				NumFields:  0,
 				Directives: []*owl.Directive{
 					owl.NewDirective("form", "birthday"),
 				},
+				Leaf: true,
 			},
 			{
-				Index:      []int{1},
+				Index:      1,
 				LookupPath: "CSRFToken",
 				NumFields:  0,
 				Directives: []*owl.Directive{
 					owl.NewDirective("form", "csrf_token"),
 				},
+				Leaf: true,
 			},
 		},
 	))
 }
 
-func TestResolveSimpleFlatStruct(t *testing.T) {
+func TestNew_WithNilType(t *testing.T) {
+	_, err := owl.New(nil)
+	assert.ErrorContains(t, err, "nil type")
+}
+
+func TestNew_WithPointer(t *testing.T) {
+	_, err := owl.New(&Pagination{})
+	assert.NoError(t, err)
+}
+
+func TestNew_WithNonStruct(t *testing.T) {
+	_, err := owl.New(123)
+	assert.ErrorContains(t, err, "non-struct type")
+}
+
+func TestNew_ParsingDirectives_InvalidName(t *testing.T) {
+	resolver, err := owl.New(struct {
+		Invalid string `owl:"invalid/name"`
+	}{})
+	assert.Nil(t, resolver)
+	assert.ErrorContains(t, err, "parse directives")
+	assert.ErrorContains(t, err, "build resolver for \"Invalid\" failed:")
+	assert.ErrorIs(t, err, owl.ErrInvalidDirectiveName)
+}
+
+func TestNew_ParsingDirectives_DuplicateDirectives(t *testing.T) {
+	resolver, err := owl.New(struct {
+		Color string `owl:"form=red;form=blue"`
+	}{})
+	assert.Nil(t, resolver)
+	assert.ErrorContains(t, err, "parse directives")
+	assert.ErrorContains(t, err, "build resolver for \"Color\" failed:")
+	assert.ErrorIs(t, err, owl.ErrDuplicateDirective)
+}
+
+func TestNew_ApplyOptionsFailed(t *testing.T) {
+	failOpt := owl.OptionFunc(func(r *owl.Resolver) error {
+		return fmt.Errorf("apply option failed")
+	})
+
+	resolver, err := owl.New(struct{}{}, failOpt)
+	assert.Nil(t, resolver)
+	assert.ErrorContains(t, err, "apply option failed")
+}
+
+func TestNew_ApplyNilNamespace(t *testing.T) {
+	resolver, err := owl.New(struct{}{}, owl.WithNamespace(nil))
+	assert.Nil(t, resolver)
+	assert.ErrorIs(t, err, owl.ErrNilNamespace)
+}
+
+func TestResolve_SimpleFlatStruct(t *testing.T) {
 	assert := assert.New(t)
 
 	tracker := &ExecutionTracker{}
@@ -174,7 +239,7 @@ func TestResolveSimpleFlatStruct(t *testing.T) {
 	}, tracker.Executed, "should execute all directives in order")
 }
 
-func TestResolveEmbeddedStruct(t *testing.T) {
+func TestResolve_EmbeddedStruct(t *testing.T) {
 	assert := assert.New(t)
 
 	tracker := &ExecutionTracker{}
@@ -214,6 +279,114 @@ func TestResolveEmbeddedStruct(t *testing.T) {
 	}, tracker.Executed, "should execute all directives in order")
 }
 
+func TestResolve_UnexportedField(t *testing.T) {
+	type User struct {
+		Name   string `owl:"env=OWL_TEST_NAME"`
+		age    int    // should be ignored
+		Gender string `owl:"env=OWL_TEST_GENDER"`
+	}
+
+	ns := owl.NewNamespace()
+	ns.RegisterDirectiveExecutor("env", owl.DirectiveExecutorFunc(exeEnvReader))
+	resolver, err := owl.New(User{}, owl.WithNamespace(ns))
+	assert.NotNil(t, resolver)
+	assert.NoError(t, err)
+
+	// Set environment variables.
+	os.Setenv("OWL_TEST_NAME", "owl")
+	os.Setenv("OWL_TEST_GENDER", "male")
+
+	// Resolve.
+	gotValue, err := resolver.Resolve()
+	assert.NoError(t, err)
+	assert.NotNil(t, gotValue)
+	gotUser, ok := gotValue.Interface().(*User)
+	assert.True(t, ok)
+	assert.Equal(t, "owl", gotUser.Name)
+	assert.Equal(t, "male", gotUser.Gender)
+}
+
+func TestResolve_MissingExecutor(t *testing.T) {
+	ns := owl.NewNamespace()
+	resolver, err := owl.New(Pagination{}, owl.WithNamespace(ns))
+
+	assert.NotNil(t, resolver)
+	assert.NoError(t, err)
+
+	_, err = resolver.Resolve()
+	assert.ErrorContains(t, err, "resolve field \"Page (int)\" failed:")
+	assert.ErrorIs(t, err, owl.ErrMissingExecutor)
+}
+
+func TestResolve_DirectiveExecutionFailure(t *testing.T) {
+	ns := owl.NewNamespace()
+	var errExecutionFailed = errors.New("directive execution failed")
+	ns.RegisterDirectiveExecutor("error", owl.DirectiveExecutorFunc(func(dr *owl.DirectiveRuntime) error {
+		return errExecutionFailed
+	}))
+
+	type Request struct {
+		Name string `owl:"error"`
+	}
+
+	resolver, err := owl.New(Request{}, owl.WithNamespace(ns))
+	assert.NoError(t, err)
+
+	rv, err := resolver.Resolve()
+	assert.NotNil(t, rv)
+	directiveExecutionError := new(owl.DirectiveExecutionError)
+	assert.ErrorAs(t, err, &directiveExecutionError)
+	assert.Equal(t, "error", directiveExecutionError.Directive.Name)
+	assert.Len(t, directiveExecutionError.Directive.Argv, 0)
+	assert.ErrorContains(t, err, "execute directive \"error\" with args [] failed:")
+	assert.ErrorContains(t, err, "directive execution failed")
+	assert.ErrorIs(t, err, errExecutionFailed)
+}
+
+func TestIterate(t *testing.T) {
+	resolver, err := owl.New(UserSignUpForm{})
+	assert.NoError(t, err)
+
+	type contextKey int
+	const ckHello contextKey = 1
+
+	callback := func(r *owl.Resolver) error {
+		r.Context = context.WithValue(r.Context, ckHello, "world")
+		return nil
+	}
+	resolver.Iterate(callback)
+
+	assert.Equal(t, "world", resolver.Lookup("User").Context.Value(ckHello))
+	assert.Equal(t, "world", resolver.Lookup("User.Name").Context.Value(ckHello))
+	assert.Equal(t, "world", resolver.Lookup("User.Gender").Context.Value(ckHello))
+	assert.Equal(t, "world", resolver.Lookup("User.Birthday").Context.Value(ckHello))
+	assert.Equal(t, "world", resolver.Lookup("CSRFToken").Context.Value(ckHello))
+}
+
+func TestIterate_CallbackFail(t *testing.T) {
+	resolver, err := owl.New(UserSignUpForm{})
+	assert.NoError(t, err)
+
+	type contextKey int
+	const ckHello contextKey = 1
+
+	callback := func(r *owl.Resolver) error {
+		if r.Field.Name == "Gender" {
+			return errors.New("callback failed")
+		}
+		r.Context = context.WithValue(r.Context, ckHello, "world")
+		return nil
+	}
+	err = resolver.Iterate(callback)
+	assert.ErrorContains(t, err, "callback failed")
+
+	assert.Equal(t, "world", resolver.Lookup("User").Context.Value(ckHello))
+	assert.Equal(t, "world", resolver.Lookup("User.Name").Context.Value(ckHello))
+	assert.Equal(t, nil, resolver.Lookup("User.Gender").Context.Value(ckHello))
+	assert.Equal(t, nil, resolver.Lookup("User.Birthday").Context.Value(ckHello))
+	assert.Equal(t, nil, resolver.Lookup("CSRFToken").Context.Value(ckHello))
+}
+
 func TestTreeDebugLayout(t *testing.T) {
 	var (
 		tree *owl.Resolver
@@ -227,31 +400,4 @@ func TestTreeDebugLayout(t *testing.T) {
 	tree, err = owl.New(Pagination{})
 	assert.NoError(t, err)
 	fmt.Println(tree.DebugLayoutText(0))
-}
-
-type ExecutionTracker struct {
-	Executed []*owl.Directive
-}
-
-func (et *ExecutionTracker) Track(directive *owl.Directive) {
-	et.Executed = append(et.Executed, directive)
-}
-
-type EchoExecutor struct {
-	Name string
-
-	tracker *ExecutionTracker
-}
-
-func NewEchoExecutor(tracker *ExecutionTracker, name string) *EchoExecutor {
-	return &EchoExecutor{
-		Name:    name,
-		tracker: tracker,
-	}
-}
-
-func (e *EchoExecutor) Execute(ctx *owl.DirectiveRuntime) error {
-	e.tracker.Track(ctx.Directive)
-	fmt.Printf("Execute %q with %v\n", ctx.Directive.Name, ctx.Directive.Argv)
-	return nil
 }

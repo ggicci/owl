@@ -6,6 +6,12 @@ type Option interface {
 	Apply(*Resolver) error
 }
 
+type OptionFunc func(*Resolver) error
+
+func (f OptionFunc) Apply(r *Resolver) error {
+	return f(r)
+}
+
 type withNamespace struct {
 	ns *Namespace
 }
@@ -22,7 +28,7 @@ func WithNamespace(ns *Namespace) Option {
 func normalizeOptions(opts []Option) []Option {
 	hasNamespace := false
 	for _, opt := range opts {
-		if opt.(*withNamespace) != nil {
+		if optWithNamespace, ok := opt.(*withNamespace); ok && optWithNamespace != nil {
 			hasNamespace = true
 			break
 		}

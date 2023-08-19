@@ -15,6 +15,7 @@ import (
 type Resolver struct {
 	Type       reflect.Type
 	Field      reflect.StructField
+	Index      int // field index in the parent struct
 	Path       []string
 	Directives []*Directive
 	Parent     *Resolver
@@ -48,11 +49,23 @@ func New(structValue interface{}, opts ...Option) (*Resolver, error) {
 		return nil, err
 	}
 
+	if err := tree.validate(); err != nil {
+		return nil, err
+	}
+
 	return tree, nil
 }
 
+func (r *Resolver) validate() error {
+	if r.Namespace() == nil {
+		return fmt.Errorf("%w: the namespace you passed through WithNamespace to owl.New is nil", ErrNilNamespace)
+	}
+
+	return nil
+}
+
 func (r *Resolver) String() string {
-	return fmt.Sprintf("%v (%v)", r.Path, r.Type)
+	return fmt.Sprintf("%s (%v)", r.PathString(), r.Type)
 }
 
 func (r *Resolver) IsRoot() bool {
@@ -79,10 +92,6 @@ func (r *Resolver) GetDirective(name string) *Directive {
 // Find finds a field resolver by path. e.g. "Pagination.Page", "User.Name", etc.
 func (r *Resolver) Lookup(path string) *Resolver {
 	return findResolver(r, strings.Split(path, "."))
-}
-
-func (r *Resolver) LookupByIndex(index []int) *Resolver {
-	return findResolverByIndex(r, index)
 }
 
 // Iterate iterates the resolver tree by depth-first. The callback function
@@ -121,11 +130,6 @@ func (r *Resolver) Resolve(opts ...ResolveOption) (reflect.Value, error) {
 func (root *Resolver) resolve(ctx context.Context) (reflect.Value, error) {
 	rootValue := reflect.New(root.Type)
 
-	// Skip unexported fields by default.
-	if !root.IsRoot() && !root.Field.IsExported() {
-		return rootValue, nil
-	}
-
 	// Run the directives on current field.
 	if err := root.runDirectives(ctx, rootValue); err != nil {
 		return rootValue, err
@@ -141,17 +145,15 @@ func (root *Resolver) resolve(ctx context.Context) (reflect.Value, error) {
 			rootValue.Elem().Set(underlyingValue)
 		}
 
-		for i, child := range root.Children {
+		for _, child := range root.Children {
 			fieldValue, err := child.resolve(ctx)
 			if err != nil {
 				return rootValue, &ResolveError{
 					Err:      err,
-					Index:    i,
 					Resolver: child,
 				}
 			}
-
-			underlyingValue.Elem().Field(i).Set(fieldValue.Elem())
+			underlyingValue.Elem().Field(child.Index).Set(fieldValue.Elem())
 		}
 	}
 
@@ -175,7 +177,7 @@ func (r *Resolver) runDirectives(ctx context.Context, rv reflect.Value) error {
 		exe := ns.LookupExecutor(directive.Name)
 		if exe == nil {
 			return &DirectiveExecutionError{
-				Err:       ErrDirectiveExecutorNotFound,
+				Err:       ErrMissingExecutor,
 				Directive: *directive,
 			}
 		}
@@ -193,10 +195,8 @@ func (r *Resolver) runDirectives(ctx context.Context, rv reflect.Value) error {
 
 func (r *Resolver) DebugLayoutText(depth int) string {
 	var sb strings.Builder
-	sb.WriteString(r.PathString())
-	sb.WriteString("(")
-	sb.WriteString(r.Type.String())
-	sb.WriteString(")")
+	sb.WriteString(r.String())
+	sb.WriteString(fmt.Sprintf("  %v", r.Index))
 
 	for i, field := range r.Children {
 		sb.WriteString("\n")
@@ -222,18 +222,6 @@ func findResolver(root *Resolver, path []string) *Resolver {
 	return nil
 }
 
-func findResolverByIndex(root *Resolver, index []int) *Resolver {
-	if len(index) == 0 {
-		return root
-	}
-
-	if len(root.Children) <= index[0] {
-		return nil
-	}
-
-	return findResolverByIndex(root.Children[index[0]], index[1:])
-}
-
 func reflectStructType(structValue interface{}) (reflect.Type, error) {
 	typ, ok := structValue.(reflect.Type)
 	if !ok {
@@ -249,7 +237,7 @@ func reflectStructType(structValue interface{}) (reflect.Type, error) {
 	}
 
 	if typ.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("not a struct type: %v", typ)
+		return nil, fmt.Errorf("non-struct type: %v", typ)
 	}
 
 	return typ, nil
@@ -264,6 +252,7 @@ func buildResolver(t reflect.Type, field reflect.StructField, parent *Resolver) 
 	root := &Resolver{
 		Type:    t,
 		Field:   field,
+		Index:   -1,
 		Parent:  parent,
 		Context: context.Background(),
 	}
@@ -271,7 +260,7 @@ func buildResolver(t reflect.Type, field reflect.StructField, parent *Resolver) 
 	if !root.IsRoot() {
 		directives, err := parseDirectives(field.Tag.Get(Tag()))
 		if err != nil {
-			return nil, fmt.Errorf("parse directives: %v", err)
+			return nil, fmt.Errorf("parse directives: %w", err)
 		}
 		root.Directives = directives
 		root.Path = append(root.Parent.Path, field.Name)
@@ -294,8 +283,9 @@ func buildResolver(t reflect.Type, field reflect.StructField, parent *Resolver) 
 			child, err := buildResolver(field.Type, field, root)
 			if err != nil {
 				path := append(root.Path, field.Name)
-				return nil, fmt.Errorf("build resolver for %q failed: %v", strings.Join(path, "."), err)
+				return nil, fmt.Errorf("build resolver for %q failed: %w", strings.Join(path, "."), err)
 			}
+			child.Index = i
 			root.Children = append(root.Children, child)
 		}
 	}
@@ -316,7 +306,7 @@ func parseDirectives(tag string) ([]*Directive, error) {
 			return nil, err
 		}
 		if existed[d.Name] {
-			return nil, fmt.Errorf("duplicate %q", d.Name)
+			return nil, duplicateDirective(d.Name)
 		}
 		existed[d.Name] = true
 		directives = append(directives, d)

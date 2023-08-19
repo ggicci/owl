@@ -40,16 +40,19 @@ func NewNamespace() *Namespace {
 // Will panic if the name were taken or the executor is nil.
 func (ns *Namespace) RegisterDirectiveExecutor(name string, exe DirectiveExecutor) {
 	if _, ok := ns.executors[name]; ok {
-		panic(duplicatedExecutor(name))
+		panic(duplicateExecutor(name))
 	}
 	ns.ReplaceDirectiveExecutor(name, exe)
 }
 
-// ReplaceDirectiveExecutor works like RegisterDirectiveExecutor without panic
-// on duplicate names.
+// ReplaceDirectiveExecutor works like RegisterDirectiveExecutor without panicing
+// on duplicate names. But it will panic if the executor is nil or the name is invalid.
 func (ns *Namespace) ReplaceDirectiveExecutor(name string, exe DirectiveExecutor) {
 	if exe == nil {
 		panic(nilExecutor(name))
+	}
+	if !isValidDirectiveName(name) {
+		panic(invalidDirectiveName(name))
 	}
 	ns.executors[name] = exe
 }

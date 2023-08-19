@@ -25,13 +25,13 @@ func TestNamespace(t *testing.T) {
 
 	ns.RegisterDirectiveExecutor("foo", DirectiveExecutorFunc(exeFoo))
 	assert.Equal(ns.LookupExecutor("foo").Execute(nil), errFoo)
-	assert.PanicsWithError(duplicatedExecutor("foo").Error(), func() {
+	assert.PanicsWithError(duplicateExecutor("foo").Error(), func() {
 		ns.RegisterDirectiveExecutor("foo", DirectiveExecutorFunc(exeFoo))
 	})
 
 	ns.RegisterDirectiveExecutor("bar", DirectiveExecutorFunc(exeBar))
 	assert.Equal(ns.LookupExecutor("bar").Execute(nil), errBar)
-	assert.PanicsWithError(duplicatedExecutor("bar").Error(), func() {
+	assert.PanicsWithError(duplicateExecutor("bar").Error(), func() {
 		ns.RegisterDirectiveExecutor("bar", DirectiveExecutorFunc(exeBar))
 	})
 
@@ -41,16 +41,22 @@ func TestNamespace(t *testing.T) {
 	assert.Equal(ns.LookupExecutor("foo").Execute(nil), errBar)
 }
 
-func TestNamespaceRegisterNilExecutor(t *testing.T) {
+func TestNamespace_RegisterNilExecutor(t *testing.T) {
 	assert.PanicsWithError(t, nilExecutor("foo").Error(), func() {
 		NewNamespace().RegisterDirectiveExecutor("foo", nil)
+	})
+}
+
+func TestNamespace_RegisterInvalidName(t *testing.T) {
+	assert.PanicsWithError(t, invalidDirectiveName(".foo").Error(), func() {
+		NewNamespace().RegisterDirectiveExecutor(".foo", DirectiveExecutorFunc(exeFoo))
 	})
 }
 
 func TestDefaultNamespace(t *testing.T) {
 	RegisterDirectiveExecutor("foo", DirectiveExecutorFunc(exeFoo))
 	assert.Equal(t, LookupExecutor("foo").Execute(nil), errFoo)
-	assert.PanicsWithError(t, duplicatedExecutor("foo").Error(), func() {
+	assert.PanicsWithError(t, duplicateExecutor("foo").Error(), func() {
 		RegisterDirectiveExecutor("foo", DirectiveExecutorFunc(exeFoo))
 	})
 
