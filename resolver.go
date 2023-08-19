@@ -6,7 +6,12 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 )
+
+// Saves all the built resolver trees without applying options.
+// The key is the struct type.
+var builtTrees sync.Map
 
 // Resolver is a field resolver. Which is a node in the resolver tree.
 // The resolver tree is built from a struct value. Each node represents a
@@ -23,21 +28,23 @@ type Resolver struct {
 	Context    context.Context // save custom resolver settings here
 }
 
-// New builds a resolver tree from a struct value.
+// New builds a resolver tree from a struct value. The given options will be
+// applied to all the resolvers. In the resolver tree, each node is also a
+// Resolver.
 func New(structValue interface{}, opts ...Option) (*Resolver, error) {
 	typ, err := reflectStructType(structValue)
 	if err != nil {
 		return nil, err
 	}
 
-	tree, err := buildResolverTree(typ)
+	tree, err := buildAndCacheResolverTree(typ)
 	if err != nil {
 		return nil, err
 	}
-
-	opts = normalizeOptions(opts)
+	tree = tree.copy()
 
 	// Apply options to each resolver.
+	opts = normalizeOptions(opts)
 	if err := tree.Iterate(func(r *Resolver) error {
 		for _, opt := range opts {
 			if err := opt.Apply(r); err != nil {
@@ -56,16 +63,26 @@ func New(structValue interface{}, opts ...Option) (*Resolver, error) {
 	return tree, nil
 }
 
+func (r *Resolver) copy() *Resolver {
+	resolverCopy := new(Resolver)
+	*resolverCopy = *r
+	resolverCopy.Context = context.Background()
+
+	// Copy the children.
+	resolverCopy.Children = make([]*Resolver, len(r.Children))
+	for i, child := range r.Children {
+		resolverCopy.Children[i] = child.copy()
+		resolverCopy.Children[i].Parent = resolverCopy
+	}
+	return resolverCopy
+}
+
 func (r *Resolver) validate() error {
 	if r.Namespace() == nil {
 		return fmt.Errorf("%w: the namespace you passed through WithNamespace to owl.New is nil", ErrNilNamespace)
 	}
 
 	return nil
-}
-
-func (r *Resolver) String() string {
-	return fmt.Sprintf("%s (%v)", r.PathString(), r.Type)
 }
 
 func (r *Resolver) IsRoot() bool {
@@ -89,9 +106,31 @@ func (r *Resolver) GetDirective(name string) *Directive {
 	return nil
 }
 
+func (r *Resolver) Namespace() *Namespace {
+	return r.Context.Value(ckNamespace).(*Namespace)
+}
+
 // Find finds a field resolver by path. e.g. "Pagination.Page", "User.Name", etc.
 func (r *Resolver) Lookup(path string) *Resolver {
 	return findResolver(r, strings.Split(path, "."))
+}
+
+func findResolver(root *Resolver, path []string) *Resolver {
+	if len(path) == 0 {
+		return root
+	}
+
+	for _, field := range root.Children {
+		if field.Field.Name == path[0] {
+			return findResolver(field, path[1:])
+		}
+	}
+
+	return nil
+}
+
+func (r *Resolver) String() string {
+	return fmt.Sprintf("%s (%v)", r.PathString(), r.Type)
 }
 
 // Iterate iterates the resolver tree by depth-first. The callback function
@@ -160,10 +199,6 @@ func (root *Resolver) resolve(ctx context.Context) (reflect.Value, error) {
 	return rootValue, nil
 }
 
-func (r *Resolver) Namespace() *Namespace {
-	return r.Context.Value(ckNamespace).(*Namespace)
-}
-
 func (r *Resolver) runDirectives(ctx context.Context, rv reflect.Value) error {
 	ns := r.Namespace()
 
@@ -208,39 +243,22 @@ func (r *Resolver) DebugLayoutText(depth int) string {
 	return sb.String()
 }
 
-func findResolver(root *Resolver, path []string) *Resolver {
-	if len(path) == 0 {
-		return root
+// buildAndCacheResolverTree returns the tree with minimum settings (without any
+// options applied). It will load from cache if possible. Otherwise, it will
+// build the tree from scratch and cache it.
+func buildAndCacheResolverTree(typ reflect.Type) (tree *Resolver, err error) {
+	if builtTree, ok := builtTrees.Load(typ); ok {
+		return builtTree.(*Resolver), nil
 	}
 
-	for _, field := range root.Children {
-		if field.Field.Name == path[0] {
-			return findResolver(field, path[1:])
-		}
+	tree, err = buildResolverTree(typ)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil
-}
-
-func reflectStructType(structValue interface{}) (reflect.Type, error) {
-	typ, ok := structValue.(reflect.Type)
-	if !ok {
-		typ = reflect.TypeOf(structValue)
-	}
-
-	if typ == nil {
-		return nil, fmt.Errorf("nil type")
-	}
-
-	if typ.Kind() == reflect.Ptr {
-		typ = typ.Elem()
-	}
-
-	if typ.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("non-struct type: %v", typ)
-	}
-
-	return typ, nil
+	// Build successfully, cache it (must a copy).
+	builtTrees.Store(typ, tree)
+	return tree, nil
 }
 
 // buildResolverTree builds a resolver tree from a struct type.
@@ -290,6 +308,27 @@ func buildResolver(t reflect.Type, field reflect.StructField, parent *Resolver) 
 		}
 	}
 	return root, nil
+}
+
+func reflectStructType(structValue interface{}) (reflect.Type, error) {
+	typ, ok := structValue.(reflect.Type)
+	if !ok {
+		typ = reflect.TypeOf(structValue)
+	}
+
+	if typ == nil {
+		return nil, fmt.Errorf("nil type")
+	}
+
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	if typ.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("non-struct type: %v", typ)
+	}
+
+	return typ, nil
 }
 
 func parseDirectives(tag string) ([]*Directive, error) {

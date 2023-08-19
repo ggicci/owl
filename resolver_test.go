@@ -210,6 +210,50 @@ func TestNew_ApplyNilNamespace(t *testing.T) {
 	assert.ErrorIs(t, err, owl.ErrNilNamespace)
 }
 
+func TestNew_copyCachedResolver(t *testing.T) {
+	assert := assert.New(t)
+
+	type Appearance struct {
+		Color string `owl:"form=color"`
+		Size  string `owl:"form=size"`
+	}
+	type Settings struct {
+		Profile    string      `owl:"form=profile"`
+		Appearance *Appearance `owl:"form=appearance"`
+	}
+	ns1 := owl.NewNamespace()
+	ns1.RegisterDirectiveExecutor("stdin", owl.DirectiveExecutorFunc(exeNoop))
+	r1, err := owl.New(Settings{}, owl.WithNamespace(ns1))
+	assert.NoError(err)
+
+	ns2 := owl.NewNamespace()
+	ns2.RegisterDirectiveExecutor("form", owl.DirectiveExecutorFunc(exeNoop))
+	r2, err := owl.New(Settings{}, owl.WithNamespace(ns2))
+	assert.NoError(err)
+
+	assert.Equal(ns1, r1.Namespace())
+	assert.Equal(ns2, r2.Namespace())
+
+	for _, lookupName := range []string{
+		"Profile",
+		"Appearance",
+		"Appearance.Color",
+		"Appearance.Size",
+	} {
+		assert.NotEqual(r1.Lookup(lookupName), r2.Lookup(lookupName))
+	}
+
+	assert.Equal(r1.Lookup("Profile").Parent, r1)
+	assert.Equal(r1.Lookup("Appearance").Parent, r1)
+	assert.Equal(r1.Lookup("Appearance.Color").Parent, r1.Lookup("Appearance"))
+	assert.Equal(r1.Lookup("Appearance.Size").Parent, r1.Lookup("Appearance"))
+
+	assert.Equal(r2.Lookup("Profile").Parent, r2)
+	assert.Equal(r2.Lookup("Appearance").Parent, r2)
+	assert.Equal(r2.Lookup("Appearance.Color").Parent, r2.Lookup("Appearance"))
+	assert.Equal(r2.Lookup("Appearance.Size").Parent, r2.Lookup("Appearance"))
+}
+
 func TestResolve_SimpleFlatStruct(t *testing.T) {
 	assert := assert.New(t)
 

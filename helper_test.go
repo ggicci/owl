@@ -9,6 +9,10 @@ import (
 	"github.com/ggicci/owl"
 )
 
+func exeNoop(rtm *owl.DirectiveRuntime) error {
+	return nil
+}
+
 func exeEnvReader(rtm *owl.DirectiveRuntime) error {
 	if len(rtm.Directive.Argv) == 0 {
 		return nil
