@@ -196,20 +196,21 @@ func TestNew_ParsingDirectives_DuplicateDirectives(t *testing.T) {
 	assert.ErrorIs(t, err, owl.ErrDuplicateDirective)
 }
 
-func TestNew_ApplyOptionsFailed(t *testing.T) {
-	failOpt := owl.OptionFunc(func(r *owl.Resolver) error {
-		return fmt.Errorf("apply option failed")
-	})
-
-	resolver, err := owl.New(struct{}{}, failOpt)
-	assert.Nil(t, resolver)
-	assert.ErrorContains(t, err, "apply option failed")
-}
-
-func TestNew_ApplyNilNamespace(t *testing.T) {
+func TestNew_OptionNilNamespace(t *testing.T) {
 	resolver, err := owl.New(struct{}{}, owl.WithNamespace(nil))
 	assert.Nil(t, resolver)
 	assert.ErrorIs(t, err, owl.ErrNilNamespace)
+}
+
+func TestNew_OptionCustomValue(t *testing.T) {
+	resolver, err := owl.New(Pagination{}, owl.WithValue("hello", "world"))
+	assert.NotNil(t, resolver)
+	assert.NoError(t, err)
+
+	resolver.Iterate(func(r *owl.Resolver) error {
+		assert.Equal(t, "world", r.Context.Value("hello"))
+		return nil
+	})
 }
 
 func TestNew_copyCachedResolver(t *testing.T) {

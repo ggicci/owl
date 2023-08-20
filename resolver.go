@@ -43,19 +43,21 @@ func New(structValue interface{}, opts ...Option) (*Resolver, error) {
 	}
 	tree = tree.copy()
 
-	// Apply options to each resolver.
-	opts = normalizeOptions(opts)
-	if err := tree.Iterate(func(r *Resolver) error {
-		for _, opt := range opts {
-			if err := opt.Apply(r); err != nil {
-				return err
-			}
-		}
-		return nil
-	}); err != nil {
-		return nil, err
+	// Apply options, build the context for each resolver.
+	defaultOpts := []Option{WithNamespace(defaultNS)}
+	opts = append(defaultOpts, opts...)
+	ctx := context.Background()
+	for _, opt := range opts {
+		ctx = opt.Apply(ctx)
 	}
 
+	// Apply the context to each resolver.
+	tree.Iterate(func(r *Resolver) error {
+		r.Context = ctx
+		return nil
+	})
+
+	// Validate the tree.
 	if err := tree.validate(); err != nil {
 		return nil, err
 	}
@@ -156,13 +158,11 @@ func iterateTree(root *Resolver, fn func(*Resolver) error) error {
 
 // Resolve resolves the resolver tree from a data source.
 // It iterates the tree by depth-first, and runs the directives on each field.
-func (r *Resolver) Resolve(opts ...ResolveOption) (reflect.Value, error) {
+func (r *Resolver) Resolve(opts ...Option) (reflect.Value, error) {
 	ctx := context.Background()
-	// Apply resolve options.
 	for _, opt := range opts {
 		ctx = opt.Apply(ctx)
 	}
-
 	return r.resolve(ctx)
 }
 
@@ -247,28 +247,28 @@ func (r *Resolver) DebugLayoutText(depth int) string {
 // options applied). It will load from cache if possible. Otherwise, it will
 // build the tree from scratch and cache it.
 func buildAndCacheResolverTree(typ reflect.Type) (tree *Resolver, err error) {
-	if builtTree, ok := builtTrees.Load(typ); ok {
+	if builtTree, ok := builtTrees.Load(typ); ok { // hit cache
 		return builtTree.(*Resolver), nil
 	}
 
-	tree, err = buildResolverTree(typ)
+	tree, err = buildResolverTree(typ) // build from scratch
 	if err != nil {
 		return nil, err
 	}
 
-	// Build successfully, cache it (must a copy).
+	// Build successfully, cache it.
 	builtTrees.Store(typ, tree)
 	return tree, nil
 }
 
 // buildResolverTree builds a resolver tree from a struct type.
-func buildResolverTree(st reflect.Type) (*Resolver, error) {
-	return buildResolver(st, reflect.StructField{}, nil)
+func buildResolverTree(typ reflect.Type) (*Resolver, error) {
+	return buildResolver(typ, reflect.StructField{}, nil)
 }
 
-func buildResolver(t reflect.Type, field reflect.StructField, parent *Resolver) (*Resolver, error) {
+func buildResolver(typ reflect.Type, field reflect.StructField, parent *Resolver) (*Resolver, error) {
 	root := &Resolver{
-		Type:    t,
+		Type:    typ,
 		Field:   field,
 		Index:   -1,
 		Parent:  parent,
@@ -284,13 +284,13 @@ func buildResolver(t reflect.Type, field reflect.StructField, parent *Resolver) 
 		root.Path = append(root.Parent.Path, field.Name)
 	}
 
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
 	}
 
-	if t.Kind() == reflect.Struct {
-		for i := 0; i < t.NumField(); i++ {
-			field := t.Field(i)
+	if typ.Kind() == reflect.Struct {
+		for i := 0; i < typ.NumField(); i++ {
+			field := typ.Field(i)
 
 			// Skip unexported fields. Because we can't set value to them, nor
 			// get value from them by reflection.
