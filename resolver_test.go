@@ -257,6 +257,33 @@ func TestNew_copyCachedResolver(t *testing.T) {
 	assert.Equal(r2.Lookup("Appearance.Size").Parent, r2.Lookup("Appearance"))
 }
 
+func TestRemoveDirective(t *testing.T) {
+	type User struct {
+		Name string `owl:"form=name;query=name;header=X-Name;required"`
+	}
+
+	resolver, err := owl.New(User{})
+	assert.NoError(t, err)
+
+	form := resolver.RemoveDirective("form")
+	assert.Nil(t, form)
+
+	nameResolver := resolver.Lookup("Name")
+	assert.NotNil(t, nameResolver)
+
+	form = nameResolver.RemoveDirective("form")
+	assert.NotNil(t, form)
+	assert.Equal(t, "form", form.Name)
+	assert.Equal(t, []string{"name"}, form.Argv)
+	assert.Nil(t, nameResolver.GetDirective("form"))
+
+	required := nameResolver.RemoveDirective("required")
+	assert.NotNil(t, required)
+	assert.Equal(t, "required", required.Name)
+	assert.Len(t, required.Argv, 0)
+	assert.Nil(t, nameResolver.GetDirective("required"))
+}
+
 func TestResolve_SimpleFlatStruct(t *testing.T) {
 	assert := assert.New(t)
 

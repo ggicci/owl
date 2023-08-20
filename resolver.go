@@ -108,6 +108,16 @@ func (r *Resolver) GetDirective(name string) *Directive {
 	return nil
 }
 
+func (r *Resolver) RemoveDirective(name string) *Directive {
+	for i, d := range r.Directives {
+		if d.Name == name {
+			r.Directives = append(r.Directives[:i], r.Directives[i+1:]...)
+			return d
+		}
+	}
+	return nil
+}
+
 func (r *Resolver) Namespace() *Namespace {
 	return r.Context.Value(ckNamespace).(*Namespace)
 }
