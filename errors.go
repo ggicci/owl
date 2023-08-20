@@ -6,6 +6,7 @@ import (
 )
 
 var (
+	ErrUnsupportedType      = errors.New("unsupported type")
 	ErrNilNamespace         = errors.New("nil namespace")
 	ErrInvalidDirectiveName = errors.New("invalid directive/executor name")
 	ErrDuplicateExecutor    = errors.New("duplicate executor")

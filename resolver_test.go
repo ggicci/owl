@@ -161,6 +161,7 @@ func TestNew_NormalCasesSuites(t *testing.T) {
 
 func TestNew_WithNilType(t *testing.T) {
 	_, err := owl.New(nil)
+	assert.ErrorIs(t, err, owl.ErrUnsupportedType)
 	assert.ErrorContains(t, err, "nil type")
 }
 
@@ -171,6 +172,7 @@ func TestNew_WithPointer(t *testing.T) {
 
 func TestNew_WithNonStruct(t *testing.T) {
 	_, err := owl.New(123)
+	assert.ErrorIs(t, err, owl.ErrUnsupportedType)
 	assert.ErrorContains(t, err, "non-struct type")
 }
 

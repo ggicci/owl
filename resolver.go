@@ -317,7 +317,7 @@ func reflectStructType(structValue interface{}) (reflect.Type, error) {
 	}
 
 	if typ == nil {
-		return nil, fmt.Errorf("nil type")
+		return nil, fmt.Errorf("%w: nil type", ErrUnsupportedType)
 	}
 
 	if typ.Kind() == reflect.Ptr {
@@ -325,7 +325,7 @@ func reflectStructType(structValue interface{}) (reflect.Type, error) {
 	}
 
 	if typ.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("non-struct type: %v", typ)
+		return nil, fmt.Errorf("%w: non-struct type %v", ErrUnsupportedType, typ)
 	}
 
 	return typ, nil
