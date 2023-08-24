@@ -44,6 +44,12 @@ func (e *ResolveError) Unwrap() error {
 	return e.Err
 }
 
+func (e *ResolveError) AsDirectiveExecutionError() *DirectiveExecutionError {
+	var de *DirectiveExecutionError
+	errors.As(e.Err, &de)
+	return de
+}
+
 type DirectiveExecutionError struct {
 	Err error
 	Directive

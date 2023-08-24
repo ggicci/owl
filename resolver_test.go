@@ -388,6 +388,7 @@ func TestResolve_MissingExecutor(t *testing.T) {
 }
 
 func TestResolve_DirectiveExecutionFailure(t *testing.T) {
+	assert := assert.New(t)
 	ns := owl.NewNamespace()
 	var errExecutionFailed = errors.New("directive execution failed")
 	ns.RegisterDirectiveExecutor("error", owl.DirectiveExecutorFunc(func(dr *owl.DirectiveRuntime) error {
@@ -399,17 +400,23 @@ func TestResolve_DirectiveExecutionFailure(t *testing.T) {
 	}
 
 	resolver, err := owl.New(Request{}, owl.WithNamespace(ns))
-	assert.NoError(t, err)
+	assert.NoError(err)
 
 	rv, err := resolver.Resolve()
-	assert.NotNil(t, rv)
+	assert.NotNil(rv)
+
+	resolveError := new(owl.ResolveError)
+	assert.ErrorAs(err, &resolveError)
+	assert.Equal("Name", resolveError.Resolver.Field.Name)
+
 	directiveExecutionError := new(owl.DirectiveExecutionError)
-	assert.ErrorAs(t, err, &directiveExecutionError)
-	assert.Equal(t, "error", directiveExecutionError.Directive.Name)
-	assert.Len(t, directiveExecutionError.Directive.Argv, 0)
-	assert.ErrorContains(t, err, "execute directive \"error\" with args [] failed:")
-	assert.ErrorContains(t, err, "directive execution failed")
-	assert.ErrorIs(t, err, errExecutionFailed)
+	assert.ErrorAs(err, &directiveExecutionError)
+	assert.Equal(directiveExecutionError, resolveError.AsDirectiveExecutionError())
+	assert.Equal("error", directiveExecutionError.Directive.Name)
+	assert.Len(directiveExecutionError.Directive.Argv, 0)
+	assert.ErrorContains(err, "execute directive \"error\" with args [] failed:")
+	assert.ErrorContains(err, "directive execution failed")
+	assert.ErrorIs(err, errExecutionFailed)
 }
 
 func TestResolve_DirectiveRuntimeContext(t *testing.T) {
