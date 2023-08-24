@@ -327,11 +327,6 @@ func TestResolve_EmbeddedStruct(t *testing.T) {
 		Roles  []string `owl:"form=roles,roles[]"`
 	}
 
-	type Pagination struct {
-		Page int `owl:"form=page"`
-		Size int `owl:"form=size"`
-	}
-
 	type UserListQuery struct {
 		UserFilter
 		Pagination
@@ -415,6 +410,52 @@ func TestResolve_DirectiveExecutionFailure(t *testing.T) {
 	assert.ErrorContains(t, err, "execute directive \"error\" with args [] failed:")
 	assert.ErrorContains(t, err, "directive execution failed")
 	assert.ErrorIs(t, err, errExecutionFailed)
+}
+
+func TestResolve_DirectiveRuntimeContext(t *testing.T) {
+	type contextKey int
+	const ckSet contextKey = 1
+	exeSetField := func(dr *owl.DirectiveRuntime) error {
+		dr.Context = context.WithValue(dr.Context, ckSet, true)
+		return nil
+	}
+	exeUnsetField := func(dr *owl.DirectiveRuntime) error {
+		dr.Context = context.WithValue(dr.Context, ckSet, false)
+		return nil
+	}
+	exeRequired := func(dr *owl.DirectiveRuntime) error {
+		alreadySet := dr.Context.Value(ckSet)
+		if alreadySet == nil || !alreadySet.(bool) {
+			return errors.New("field is required")
+		}
+		return nil
+	}
+
+	ns := owl.NewNamespace()
+	ns.RegisterDirectiveExecutor("set", owl.DirectiveExecutorFunc(exeSetField))
+	ns.RegisterDirectiveExecutor("unset", owl.DirectiveExecutorFunc(exeUnsetField))
+	ns.RegisterDirectiveExecutor("required", owl.DirectiveExecutorFunc(exeRequired))
+
+	type RequestSet struct {
+		// In required directive, the context value of ckSet should be true here.
+		Name string `owl:"set;required"`
+	}
+
+	resolver, err := owl.New(RequestSet{}, owl.WithNamespace(ns))
+	assert.NoError(t, err)
+	_, err = resolver.Resolve()
+	assert.NoError(t, err)
+
+	type RequestUnset struct {
+		// In required directive, the context value of ckSet should be false here.
+		// Thus, the required directive should fail.
+		Name string `owl:"unset;required"`
+	}
+
+	resolver, err = owl.New(RequestUnset{}, owl.WithNamespace(ns))
+	assert.NoError(t, err)
+	_, err = resolver.Resolve()
+	assert.ErrorContains(t, err, "field is required")
 }
 
 func TestIterate(t *testing.T) {

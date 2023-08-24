@@ -76,6 +76,35 @@ func (f DirectiveExecutorFunc) Execute(de *DirectiveRuntime) error {
 type DirectiveRuntime struct {
 	Directive *Directive
 	Resolver  *Resolver
-	Context   context.Context
-	Value     reflect.Value
+
+	// Value is the reflect.Value of the field that the directive is applied to.
+	// Worth noting that the value is a pointer to the field value. Which means
+	// if the field is of type int. Then Value is of type *int. And the actual
+	// value is stored in Value.Elem().Int(). The same for other types. So if you
+	// want to modify the field value, you should call Value.Elem().Set(value),
+	// e.g. Value.Elem().SetString(value), Value.Elem().SetInt(value), etc.
+	Value reflect.Value
+
+	// Context is the runtime context of the directive execution. The initial
+	// context can be tweaked by applying options to Resolver.Resolve method.
+	// Use WithValue option to set a value to the initial context. Each field
+	// resolver will creates a new context by copying this initial context. And
+	// for the directives of the same field resolver, they will use the same
+	// context. Latter directives can use the values set by the former
+	// directives. Ex:
+	//
+	//  type User struct {
+	//      Name 	string `owl:"dirA;dirB"` // Context_1
+	//      Gender 	string `owl:"dirC"`      // Context_2
+	//  }
+	//
+	//  New(User{}).Resolve(WithValue("color", "red")) // Context_0
+	//
+	// In the above example, the initial context is Context_0. It has a value of "color" set to "red".
+	// The context of the first field resolver is Context_1. It is created by copying Context_0.
+	// The context of the second field resolver is Context_2. It is also created by copying Context_0.
+	// Thus, all the directives during execution can access the value of "color" in Context_0.
+	// For the Name field resolver, it has two directives, dirA and dirB. They will use the same context Context_1.
+	// and if in dirA we set a value of "foo" to "bar", then in dirB we can get the value of "foo" as "bar".
+	Context context.Context
 }

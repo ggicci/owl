@@ -233,6 +233,8 @@ func (r *Resolver) runDirectives(ctx context.Context, rv reflect.Value) error {
 				Directive: *directive,
 			}
 		}
+
+		ctx = dirRuntime.Context // make the context available to the next directive
 	}
 
 	return nil
