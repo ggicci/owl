@@ -17,8 +17,9 @@ func exeEnvReader(rtm *owl.DirectiveRuntime) error {
 	if len(rtm.Directive.Argv) == 0 {
 		return nil
 	}
-	value := os.Getenv(rtm.Directive.Argv[0])
-	rtm.Value.Elem().SetString(value)
+	if value, ok := os.LookupEnv(rtm.Directive.Argv[0]); ok {
+		rtm.Value.Elem().SetString(value)
+	}
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/ggicci/owl"
@@ -61,13 +62,14 @@ func (s *BuildResolverTreeTestSuite) Test_0_Lookup_IsLeaf() {
 	assert := assert.New(s.T())
 	for _, expected := range s.expected {
 		resolver := s.tree.Lookup(expected.LookupPath)
-		assert.Nil(s.tree.Lookup("SomeNonExistingPath"))
 		assert.NotNil(resolver)
 		assert.Equal(expected.Index, resolver.Index)
 		assert.Equal(expected.NumFields, len(resolver.Children))
 		assert.Equal(expected.Directives, resolver.Directives)
 		assert.Equal(expected.Leaf, resolver.IsLeaf())
 	}
+
+	assert.Nil(s.tree.Lookup("SomeNonExistingPath"))
 }
 
 func (s *BuildResolverTreeTestSuite) Test_1_GetDirective() {
@@ -152,6 +154,70 @@ func TestNew_NormalCasesSuites(t *testing.T) {
 				NumFields:  0,
 				Directives: []*owl.Directive{
 					owl.NewDirective("form", "csrf_token"),
+				},
+				Leaf: true,
+			},
+		},
+	))
+}
+
+func TestNew_SkipFieldsHavingNoDirectives(t *testing.T) {
+	type AnotherForm struct {
+		Username   string      `owl:"form=username"`
+		Password   string      `owl:"form=password"`
+		Hidden     string      // should be ignored
+		Pagination *Pagination // should not be ignored
+	}
+
+	suite.Run(t, NewBuildResolverTreeTestSuite(
+		AnotherForm{},
+		[]*expectedResolver{
+			{
+				Index:      -1,
+				LookupPath: "",
+				NumFields:  3,
+				Directives: nil,
+				Leaf:       false,
+			},
+			{
+				Index:      0,
+				LookupPath: "Username",
+				Directives: []*owl.Directive{
+					owl.NewDirective("form", "username"),
+				},
+				Leaf: true,
+			},
+			{
+				Index:      1,
+				LookupPath: "Password",
+				NumFields:  0,
+				Directives: []*owl.Directive{
+					owl.NewDirective("form", "password"),
+				},
+				Leaf: true,
+			},
+			{
+				Index:      3, // Pagination is the 4th field, Hidden is the 3rd field.
+				LookupPath: "Pagination",
+				NumFields:  2,
+				Directives: nil,
+				Leaf:       false,
+			},
+			{
+				Index:      0,
+				LookupPath: "Pagination.Page",
+				NumFields:  0,
+				Directives: []*owl.Directive{
+					owl.NewDirective("form", "page"),
+				},
+				Leaf: true,
+			},
+			{
+				Index:      1,
+				LookupPath: "Pagination.Size",
+				NumFields:  0,
+				Directives: []*owl.Directive{
+					owl.NewDirective("form", "size"),
 				},
 				Leaf: true,
 			},
@@ -368,7 +434,6 @@ func TestResolve_UnexportedField(t *testing.T) {
 	// Resolve.
 	gotValue, err := resolver.Resolve()
 	assert.NoError(t, err)
-	assert.NotNil(t, gotValue)
 	gotUser, ok := gotValue.Interface().(*User)
 	assert.True(t, ok)
 	assert.Equal(t, "owl", gotUser.Name)
@@ -463,6 +528,44 @@ func TestResolve_DirectiveRuntimeContext(t *testing.T) {
 	assert.NoError(t, err)
 	_, err = resolver.Resolve()
 	assert.ErrorContains(t, err, "field is required")
+}
+
+func TestResolve_NestedExecution(t *testing.T) {
+	type User struct {
+		Name string `owl:"env=OWL_TEST_NAME"`
+		Role string `owl:"env=OWL_TEST_ROLE"`
+	}
+
+	type Request struct {
+		// NOTE: Login will be created and updated by login directive,
+		// and its fields will also be updated by env directive.
+		Login  User   `owl:"login"`
+		Action string `owl:"env=OWL_TEST_ACTION"`
+	}
+
+	expected := &Request{
+		Login: User{
+			Name: "owl",   // set by env
+			Role: "admin", // set by login
+		},
+		Action: "addAccount",
+	}
+
+	ns := owl.NewNamespace()
+	ns.RegisterDirectiveExecutor("env", owl.DirectiveExecutorFunc(exeEnvReader))
+	ns.RegisterDirectiveExecutor("login", owl.DirectiveExecutorFunc(func(dr *owl.DirectiveRuntime) error {
+		u := User{Name: "hello", Role: "admin"}
+		dr.Value.Elem().Set(reflect.ValueOf(u))
+		return nil
+	}))
+	os.Setenv("OWL_TEST_NAME", "owl")
+	os.Setenv("OWL_TEST_ACTION", "addAccount")
+
+	resolver, err := owl.New(Request{}, owl.WithNamespace(ns))
+	assert.NoError(t, err)
+	gotValue, err := resolver.Resolve()
+	assert.NoError(t, err)
+	assert.Equal(t, expected, gotValue.Interface().(*Request))
 }
 
 func TestIterate(t *testing.T) {

@@ -124,7 +124,11 @@ func (r *Resolver) Namespace() *Namespace {
 
 // Find finds a field resolver by path. e.g. "Pagination.Page", "User.Name", etc.
 func (r *Resolver) Lookup(path string) *Resolver {
-	return findResolver(r, strings.Split(path, "."))
+	var paths []string
+	if path != "" {
+		paths = strings.Split(path, ".")
+	}
+	return findResolver(r, paths)
 }
 
 func findResolver(root *Resolver, path []string) *Resolver {
@@ -173,15 +177,14 @@ func (r *Resolver) Resolve(opts ...Option) (reflect.Value, error) {
 	for _, opt := range opts {
 		ctx = opt.Apply(ctx)
 	}
-	return r.resolve(ctx)
+	rootValue := reflect.New(r.Type)
+	return rootValue, r.resolve(ctx, rootValue)
 }
 
-func (root *Resolver) resolve(ctx context.Context) (reflect.Value, error) {
-	rootValue := reflect.New(root.Type)
-
+func (root *Resolver) resolve(ctx context.Context, rootValue reflect.Value) error {
 	// Run the directives on current field.
 	if err := root.runDirectives(ctx, rootValue); err != nil {
-		return rootValue, err
+		return err
 	}
 
 	// Resolve the children fields.
@@ -195,18 +198,15 @@ func (root *Resolver) resolve(ctx context.Context) (reflect.Value, error) {
 		}
 
 		for _, child := range root.Children {
-			fieldValue, err := child.resolve(ctx)
-			if err != nil {
-				return rootValue, &ResolveError{
+			if err := child.resolve(ctx, underlyingValue.Elem().Field(child.Index).Addr()); err != nil {
+				return &ResolveError{
 					Err:      err,
 					Resolver: child,
 				}
 			}
-			underlyingValue.Elem().Field(child.Index).Set(fieldValue.Elem())
 		}
 	}
-
-	return rootValue, nil
+	return nil
 }
 
 func (r *Resolver) runDirectives(ctx context.Context, rv reflect.Value) error {
@@ -316,7 +316,11 @@ func buildResolver(typ reflect.Type, field reflect.StructField, parent *Resolver
 				return nil, fmt.Errorf("build resolver for %q failed: %w", strings.Join(path, "."), err)
 			}
 			child.Index = i
-			root.Children = append(root.Children, child)
+
+			// Skip the field if it has no children and no directives.
+			if len(child.Children) > 0 || len(child.Directives) > 0 {
+				root.Children = append(root.Children, child)
+			}
 		}
 	}
 	return root, nil

@@ -31,7 +31,6 @@ func TestOwlUseCaseEnvReader(t *testing.T) {
 	// Resolve.
 	gotValue, err := resolver.Resolve()
 	assert.NoError(err)
-	assert.NotNil(gotValue)
 	gotConfig, ok := gotValue.Interface().(*EnvConfig)
 	assert.True(ok)
 	assert.Equal("/home/ggicci/.owl", gotConfig.Workspace)
@@ -84,7 +83,6 @@ func TestOwlUseCaseConfigLoader(t *testing.T) {
 	// Resolve.
 	gotValue, err := resolver.Resolve(owl.WithValue("ConfigFile", filename))
 	assert.NoError(err)
-	assert.NotNil(gotValue)
 
 	gotConfig, ok := gotValue.Interface().(*MyAppConfig)
 	assert.True(ok)
@@ -103,7 +101,6 @@ func TestOwlUseCaseConfigLoader(t *testing.T) {
 	// Resolve again.
 	gotValue, err = resolver.Resolve(owl.WithValue("ConfigFile", filename))
 	assert.NoError(err)
-	assert.NotNil(gotValue)
 
 	gotConfig, ok = gotValue.Interface().(*MyAppConfig)
 	assert.True(ok)
