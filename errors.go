@@ -3,6 +3,7 @@ package owl
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 var (
@@ -13,6 +14,8 @@ var (
 	ErrDuplicateDirective   = errors.New("duplicate directive")
 	ErrNilExecutor          = errors.New("nil executor")
 	ErrMissingExecutor      = errors.New("missing executor")
+	ErrTypeMismatch         = errors.New("type mismatch")
+	ErrScanNilField         = errors.New("scan nil field")
 )
 
 func invalidDirectiveName(name string) error {
@@ -32,19 +35,49 @@ func nilExecutor(name string) error {
 }
 
 type ResolveError struct {
-	Err      error
-	Resolver *Resolver
+	fieldError
 }
 
 func (e *ResolveError) Error() string {
 	return fmt.Sprintf("resolve field %q failed: %s", e.Resolver.String(), e.Err)
 }
 
-func (e *ResolveError) Unwrap() error {
+type ScanError struct {
+	fieldError
+}
+
+func (e *ScanError) Error() string {
+	return fmt.Sprintf("scan field %q failed: %s", e.Resolver.String(), e.Err)
+}
+
+type ScanErrors []*ScanError
+
+func (e ScanErrors) Error() string {
+	var errs []string
+	pe := e
+	if len(e) > 3 {
+		pe = e[:3]
+	}
+	for _, se := range pe {
+		errs = append(errs, se.Error())
+	}
+	rest := len(e) - 3
+	if rest > 0 {
+		errs = append(errs, fmt.Sprintf("...(%d more)", rest))
+	}
+	return fmt.Sprintf("scan errors: %s", strings.Join(errs, "; "))
+}
+
+type fieldError struct {
+	Err      error
+	Resolver *Resolver
+}
+
+func (e *fieldError) Unwrap() error {
 	return e.Err
 }
 
-func (e *ResolveError) AsDirectiveExecutionError() *DirectiveExecutionError {
+func (e *fieldError) AsDirectiveExecutionError() *DirectiveExecutionError {
 	var de *DirectiveExecutionError
 	errors.As(e.Err, &de)
 	return de
@@ -61,4 +94,17 @@ func (e *DirectiveExecutionError) Error() string {
 
 func (e *DirectiveExecutionError) Unwrap() error {
 	return e.Err
+}
+
+type scanErrorSink struct {
+	errors ScanErrors
+}
+
+func (es *scanErrorSink) Add(resolver *Resolver, err error) {
+	es.errors = append(es.errors, &ScanError{
+		fieldError: fieldError{
+			Err:      err,
+			Resolver: resolver,
+		},
+	})
 }
