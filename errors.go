@@ -8,11 +8,8 @@ import (
 
 var (
 	ErrUnsupportedType      = errors.New("unsupported type")
-	ErrNilNamespace         = errors.New("nil namespace")
-	ErrInvalidDirectiveName = errors.New("invalid directive/executor name")
-	ErrDuplicateExecutor    = errors.New("duplicate executor")
+	ErrInvalidDirectiveName = errors.New("invalid directive name")
 	ErrDuplicateDirective   = errors.New("duplicate directive")
-	ErrNilExecutor          = errors.New("nil executor")
 	ErrMissingExecutor      = errors.New("missing executor")
 	ErrTypeMismatch         = errors.New("type mismatch")
 	ErrScanNilField         = errors.New("scan nil field")
@@ -22,16 +19,16 @@ func invalidDirectiveName(name string) error {
 	return fmt.Errorf("%w: %q (should comply with %s)", ErrInvalidDirectiveName, name, reDirectiveName.String())
 }
 
-func duplicateExecutor(name string) error {
-	return fmt.Errorf("%w: %q (registered to the same namespace)", ErrDuplicateExecutor, name)
-}
-
 func duplicateDirective(name string) error {
 	return fmt.Errorf("%w: %q (defined in the same struct tag)", ErrDuplicateDirective, name)
 }
 
+func duplicateExecutor(name string) error {
+	return fmt.Errorf("duplicate executor: %q (registered to the same namespace)", name)
+}
+
 func nilExecutor(name string) error {
-	return fmt.Errorf("%w: %q", ErrNilExecutor, name)
+	return fmt.Errorf("nil executor: %q", name)
 }
 
 type ResolveError struct {

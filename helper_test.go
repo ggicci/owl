@@ -145,6 +145,6 @@ func createNsForTrackingCtor(throwError error, verifier *ContextVerifier) (*owl.
 	ns := owl.NewNamespace()
 	ns.RegisterDirectiveExecutor("form", NewEchoExecutor(tracker, "form", throwError, verifier))
 	ns.RegisterDirectiveExecutor("default", NewEchoExecutor(tracker, "default", throwError, verifier))
-	ns.ReplaceDirectiveExecutor("env", NewEchoExecutor(tracker, "env", throwError, verifier))
+	ns.RegisterDirectiveExecutor("env", NewEchoExecutor(tracker, "env", throwError, verifier))
 	return ns, tracker
 }

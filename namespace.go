@@ -1,20 +1,15 @@
 package owl
 
+import "fmt"
+
 var (
 	defaultNS = NewNamespace()
 )
 
-// RegisterDirectiveExecutor registers a named executor globally (in the default
-// namespace).
-func RegisterDirectiveExecutor(name string, exe DirectiveExecutor) {
-	defaultNS.RegisterDirectiveExecutor(name, exe)
-}
-
-// ReplaceDirectiveExecutor replaces a named executor globally (in the default
-// namespace). It works like RegisterDirectiveExecutor without panic on
-// duplicate names.
-func ReplaceDirectiveExecutor(name string, exe DirectiveExecutor) {
-	defaultNS.ReplaceDirectiveExecutor(name, exe)
+// RegisterDirectiveExecutor registers a named executor globally, i.e. to the default
+// namespace.
+func RegisterDirectiveExecutor(name string, exe DirectiveExecutor, replace ...bool) {
+	defaultNS.RegisterDirectiveExecutor(name, exe, replace...)
 }
 
 // LookupExecutor returns the executor by name globally (from the default
@@ -35,24 +30,19 @@ func NewNamespace() *Namespace {
 	}
 }
 
-// RegisterDirectiveExecutor registers a named executor in the namespace.
-// The executor should implement the DirectiveExecutor interface.
-// Will panic if the name were taken or the executor is nil.
-func (ns *Namespace) RegisterDirectiveExecutor(name string, exe DirectiveExecutor) {
-	if _, ok := ns.executors[name]; ok {
-		panic(duplicateExecutor(name))
+// RegisterDirectiveExecutor registers a named executor to the namespace. The executor
+// should implement the DirectiveExecutor interface. Will panic if the name were taken
+// or the executor is nil. Pass replace (true) to ignore the name conflict.
+func (ns *Namespace) RegisterDirectiveExecutor(name string, exe DirectiveExecutor, replace ...bool) {
+	force := len(replace) > 0 && replace[0]
+	if _, ok := ns.executors[name]; ok && !force {
+		panic(fmt.Errorf("owl: %s", duplicateExecutor(name)))
 	}
-	ns.ReplaceDirectiveExecutor(name, exe)
-}
-
-// ReplaceDirectiveExecutor works like RegisterDirectiveExecutor without panicing
-// on duplicate names. But it will panic if the executor is nil or the name is invalid.
-func (ns *Namespace) ReplaceDirectiveExecutor(name string, exe DirectiveExecutor) {
 	if exe == nil {
-		panic(nilExecutor(name))
+		panic(fmt.Errorf("owl: %s", nilExecutor(name)))
 	}
 	if !isValidDirectiveName(name) {
-		panic(invalidDirectiveName(name))
+		panic(fmt.Errorf("owl: %s", invalidDirectiveName(name)))
 	}
 	ns.executors[name] = exe
 }

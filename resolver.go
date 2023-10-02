@@ -2,6 +2,7 @@ package owl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -81,7 +82,7 @@ func (r *Resolver) copy() *Resolver {
 
 func (r *Resolver) validate() error {
 	if r.Namespace() == nil {
-		return fmt.Errorf("%w: the namespace you passed through WithNamespace to owl.New is nil", ErrNilNamespace)
+		return errors.New("nil namespace")
 	}
 
 	return nil
@@ -288,6 +289,11 @@ func (root *Resolver) resolve(ctx context.Context, rootValue reflect.Value) erro
 
 func (r *Resolver) runDirectives(ctx context.Context, rv reflect.Value) error {
 	ns := r.Namespace()
+
+	// The namespace can be overriden by calling Scan/Resolve with WithNamespace.
+	if nsOverriden := ctx.Value(ckNamespace); nsOverriden != nil {
+		ns = nsOverriden.(*Namespace)
+	}
 
 	for _, directive := range r.Directives {
 		dirRuntime := &DirectiveRuntime{
