@@ -30,7 +30,7 @@ type UserSignUpForm struct {
 }
 
 type expectedResolver struct {
-	Index      int
+	Index      []int
 	LookupPath string
 	NumFields  int
 	Directives []*owl.Directive
@@ -88,7 +88,7 @@ func TestNew_NormalCasesSuites(t *testing.T) {
 		Pagination{},
 		[]*expectedResolver{
 			{
-				Index:      0,
+				Index:      []int{0},
 				LookupPath: "Page",
 				NumFields:  0,
 				Directives: []*owl.Directive{
@@ -97,7 +97,7 @@ func TestNew_NormalCasesSuites(t *testing.T) {
 				Leaf: true,
 			},
 			{
-				Index:      1,
+				Index:      []int{1},
 				LookupPath: "Size",
 				NumFields:  0,
 				Directives: []*owl.Directive{
@@ -112,7 +112,7 @@ func TestNew_NormalCasesSuites(t *testing.T) {
 		UserSignUpForm{},
 		[]*expectedResolver{
 			{
-				Index:      0,
+				Index:      []int{0},
 				LookupPath: "User",
 				NumFields:  3,
 				Directives: []*owl.Directive{
@@ -121,7 +121,7 @@ func TestNew_NormalCasesSuites(t *testing.T) {
 				Leaf: false,
 			},
 			{
-				Index:      0,
+				Index:      []int{0, 0},
 				LookupPath: "User.Name",
 				NumFields:  0,
 				Directives: []*owl.Directive{
@@ -130,7 +130,7 @@ func TestNew_NormalCasesSuites(t *testing.T) {
 				Leaf: true,
 			},
 			{
-				Index:      1,
+				Index:      []int{0, 1},
 				LookupPath: "User.Gender",
 				NumFields:  0,
 				Directives: []*owl.Directive{
@@ -140,7 +140,7 @@ func TestNew_NormalCasesSuites(t *testing.T) {
 				Leaf: true,
 			},
 			{
-				Index:      2,
+				Index:      []int{0, 2},
 				LookupPath: "User.Birthday",
 				NumFields:  0,
 				Directives: []*owl.Directive{
@@ -149,7 +149,7 @@ func TestNew_NormalCasesSuites(t *testing.T) {
 				Leaf: true,
 			},
 			{
-				Index:      1,
+				Index:      []int{1},
 				LookupPath: "CSRFToken",
 				NumFields:  0,
 				Directives: []*owl.Directive{
@@ -173,14 +173,14 @@ func TestNew_SkipFieldsHavingNoDirectives(t *testing.T) {
 		AnotherForm{},
 		[]*expectedResolver{
 			{
-				Index:      -1,
+				Index:      []int{},
 				LookupPath: "",
 				NumFields:  3,
 				Directives: nil,
 				Leaf:       false,
 			},
 			{
-				Index:      0,
+				Index:      []int{0},
 				LookupPath: "Username",
 				Directives: []*owl.Directive{
 					owl.NewDirective("form", "username"),
@@ -188,7 +188,7 @@ func TestNew_SkipFieldsHavingNoDirectives(t *testing.T) {
 				Leaf: true,
 			},
 			{
-				Index:      1,
+				Index:      []int{1},
 				LookupPath: "Password",
 				NumFields:  0,
 				Directives: []*owl.Directive{
@@ -197,14 +197,14 @@ func TestNew_SkipFieldsHavingNoDirectives(t *testing.T) {
 				Leaf: true,
 			},
 			{
-				Index:      3, // Pagination is the 4th field, Hidden is the 3rd field.
+				Index:      []int{3}, // Pagination is the 4th field, Hidden is the 3rd field.
 				LookupPath: "Pagination",
 				NumFields:  2,
 				Directives: nil,
 				Leaf:       false,
 			},
 			{
-				Index:      0,
+				Index:      []int{3, 0},
 				LookupPath: "Pagination.Page",
 				NumFields:  0,
 				Directives: []*owl.Directive{
@@ -213,7 +213,7 @@ func TestNew_SkipFieldsHavingNoDirectives(t *testing.T) {
 				Leaf: true,
 			},
 			{
-				Index:      1,
+				Index:      []int{3, 1},
 				LookupPath: "Pagination.Size",
 				NumFields:  0,
 				Directives: []*owl.Directive{
@@ -352,13 +352,7 @@ func TestRemoveDirective(t *testing.T) {
 
 func TestResolve_SimpleFlatStruct(t *testing.T) {
 	assert := assert.New(t)
-
-	tracker := &ExecutionTracker{}
-	ns := owl.NewNamespace()
-	ns.ReplaceDirectiveExecutor("env", NewEchoExecutor(tracker, "env"))
-	ns.ReplaceDirectiveExecutor("form", NewEchoExecutor(tracker, "form"))
-	ns.ReplaceDirectiveExecutor("default", NewEchoExecutor(tracker, "default"))
-
+	ns, tracker := createNsForTracking()
 	type GenerateAccessTokenRequest struct {
 		Key      string `owl:"env=ACCESS_TOKEN_KEY_GENERATION_KEY"`
 		UserName string `owl:"form=username"`
@@ -376,17 +370,12 @@ func TestResolve_SimpleFlatStruct(t *testing.T) {
 		owl.NewDirective("form", "username"),
 		owl.NewDirective("form", "expiry"),
 		owl.NewDirective("default", "3600"),
-	}, tracker.Executed, "should execute all directives in order")
+	}, tracker.Executed.ExecutedDirectives(), "should execute all directives in order")
 }
 
 func TestResolve_EmbeddedStruct(t *testing.T) {
 	assert := assert.New(t)
-
-	tracker := &ExecutionTracker{}
-	ns := owl.NewNamespace()
-	ns.ReplaceDirectiveExecutor("form", NewEchoExecutor(tracker, "form"))
-	ns.ReplaceDirectiveExecutor("default", NewEchoExecutor(tracker, "default"))
-
+	ns, tracker := createNsForTracking()
 	type UserFilter struct {
 		Gender string   `owl:"form=gender"`
 		Ages   []int    `owl:"form=age,age[];default=18,999"`
@@ -411,7 +400,7 @@ func TestResolve_EmbeddedStruct(t *testing.T) {
 		owl.NewDirective("form", "roles", "roles[]"),
 		owl.NewDirective("form", "page"),
 		owl.NewDirective("form", "size"),
-	}, tracker.Executed, "should execute all directives in order")
+	}, tracker.Executed.ExecutedDirectives(), "should execute all directives in order")
 }
 
 func TestResolve_UnexportedField(t *testing.T) {
@@ -566,6 +555,142 @@ func TestResolve_NestedExecution(t *testing.T) {
 	gotValue, err := resolver.Resolve()
 	assert.NoError(t, err)
 	assert.Equal(t, expected, gotValue.Interface().(*Request))
+}
+
+func TestScan(t *testing.T) {
+	ns, tracker := createNsForTracking()
+	resolver, err := owl.New(User{}, owl.WithNamespace(ns))
+	assert.NoError(t, err)
+
+	user := &User{
+		Name:     "Ggicci",
+		Gender:   "male",
+		Birthday: "1991-11-10",
+	}
+	expected := ExecutedDataList{
+		{owl.NewDirective("form", "name"), "Ggicci"},
+		{owl.NewDirective("form", "gender"), "male"},
+		{owl.NewDirective("default", "unknown"), "male"},
+		{owl.NewDirective("form", "birthday"), "1991-11-10"},
+	}
+
+	// scan on pointer value
+	err = resolver.Scan(user)
+	assert.NoError(t, err)
+	assert.Equal(t, expected, tracker.Executed)
+
+	// scan on non-pointer value
+	tracker.Reset()
+	err = resolver.Scan(*user)
+	assert.NoError(t, err)
+	assert.Equal(t, expected, tracker.Executed)
+}
+
+func TestScan_withOpts(t *testing.T) {
+	ns, _ := createNsForTrackingWithContextVerifier(&ContextVerifier{"hello", "world"})
+	resolver, err := owl.New(User{}, owl.WithNamespace(ns))
+	assert.NoError(t, err)
+	err = resolver.Scan(User{}, owl.WithValue("hello", "world"))
+	assert.NoError(t, err)
+
+	err = resolver.Scan(User{}, owl.WithValue("hello", "golang"))
+	assert.ErrorContains(t, err, "unexpected context value")
+}
+
+func TestScan_onNilValue(t *testing.T) {
+	resolver, err := owl.New(User{})
+	assert.NoError(t, err)
+
+	err = resolver.Scan(nil)
+	assert.ErrorContains(t, err, "nil")
+}
+
+func TestScan_ErrTypeMismatch(t *testing.T) {
+	resolver, err := owl.New(User{})
+	assert.NoError(t, err)
+
+	err = resolver.Scan(Pagination{})
+	assert.ErrorIs(t, err, owl.ErrTypeMismatch)
+}
+
+func TestScan_ErrMissingExecutor(t *testing.T) {
+	resolver, err := owl.New(User{})
+	assert.NoError(t, err)
+
+	err = resolver.Scan(User{})
+	assert.Error(t, err)
+	var se owl.ScanErrors
+	assert.ErrorAs(t, err, &se)
+	assert.Len(t, se, 3)
+	assert.ErrorIs(t, se[0], owl.ErrMissingExecutor)
+}
+
+func TestScan_NestedStruct(t *testing.T) {
+	ns, tracker := createNsForTracking()
+	resolver, err := owl.New(UserSignUpForm{}, owl.WithNamespace(ns))
+	assert.NoError(t, err)
+
+	form := &UserSignUpForm{
+		User: User{
+			Name:     "Ggicci",
+			Gender:   "male",
+			Birthday: "1991-11-10",
+		},
+		CSRFToken: "123456",
+	}
+
+	expected := ExecutedDataList{
+		{owl.NewDirective("form", "user"), form.User}, // nested struct
+
+		{owl.NewDirective("form", "name"), "Ggicci"},
+		{owl.NewDirective("form", "gender"), "male"},
+		{owl.NewDirective("default", "unknown"), "male"},
+		{owl.NewDirective("form", "birthday"), "1991-11-10"},
+
+		{owl.NewDirective("form", "csrf_token"), "123456"},
+	}
+
+	err = resolver.Scan(form)
+	assert.NoError(t, err)
+	assert.Equal(t, expected, tracker.Executed)
+}
+
+func TestScan_NestedStruct_ScanErrors_executeDirectiveFailed(t *testing.T) {
+	ns, _ := createNsForTrackingWithError(errors.New("TestScan_NestedStruct_ScanErrors"))
+	resolver, err := owl.New(UserSignUpForm{}, owl.WithNamespace(ns))
+	assert.NoError(t, err)
+
+	form := &UserSignUpForm{
+		User: User{
+			Name:     "Ggicci",
+			Gender:   "male",
+			Birthday: "1991-11-10",
+		},
+		CSRFToken: "123456",
+	}
+
+	err = resolver.Scan(form)
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, "TestScan_NestedStruct_ScanErrors")
+	var se owl.ScanErrors
+	assert.ErrorAs(t, err, &se)
+	assert.Len(t, se, 5)
+}
+
+func TestScan_NestedStruct_ScanErrors_ErrScanNilField(t *testing.T) {
+	type MyUserSignUpForm struct {
+		User  *User
+		Token string
+	}
+	resolver, err := owl.New(MyUserSignUpForm{})
+	assert.NoError(t, err)
+
+	form := &MyUserSignUpForm{User: nil, Token: "123456"}
+	err = resolver.Scan(form)
+	var se owl.ScanErrors
+	assert.ErrorAs(t, err, &se)
+	assert.Len(t, se, 3) // User has 3 fields that defined owl directives.
+	assert.ErrorIs(t, se[0], owl.ErrScanNilField)
 }
 
 func TestIterate(t *testing.T) {

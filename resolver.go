@@ -20,7 +20,7 @@ var builtTrees sync.Map
 type Resolver struct {
 	Type       reflect.Type
 	Field      reflect.StructField
-	Index      int // field index in the parent struct
+	Index      []int
 	Path       []string
 	Directives []*Directive
 	Parent     *Resolver
@@ -149,20 +149,20 @@ func (r *Resolver) String() string {
 	return fmt.Sprintf("%s (%v)", r.PathString(), r.Type)
 }
 
-// Iterate iterates the resolver tree by depth-first. The callback function
+// Iterate visits the resolver tree by depth-first. The callback function
 // will be called for each field resolver. If the callback returns an error,
 // the iteration will be stopped.
 func (r *Resolver) Iterate(fn func(*Resolver) error) error {
-	return iterateTree(r, fn)
+	return iterateResolverTree(r, fn)
 }
 
-func iterateTree(root *Resolver, fn func(*Resolver) error) error {
+func iterateResolverTree(root *Resolver, fn func(*Resolver) error) error {
 	if err := fn(root); err != nil {
 		return err
 	}
 
 	for _, field := range root.Children {
-		if err := iterateTree(field, fn); err != nil {
+		if err := iterateResolverTree(field, fn); err != nil {
 			return err
 		}
 	}
@@ -170,8 +170,83 @@ func iterateTree(root *Resolver, fn func(*Resolver) error) error {
 	return nil
 }
 
-// Resolve resolves the resolver tree from a data source.
-// It iterates the tree by depth-first, and runs the directives on each field.
+// Scan scans the struct value by traversing the fields in depth-first order. The value is required
+// to have the same type as the resolver holds. While scanning, it will run the directives on each
+// field. The DirectiveRuntime that can be accessed during the directive exeuction will have its
+// Value property populated with reflect.Value of the field. Typically, Scan is used to do some
+// readonly operations against the struct value, e.g. validate the struct value, build something
+// based on the struct value, etc.
+//
+// Use WithValue to create an Option that can add custom values to the context, the context can be
+// used by the directive executors during the resolution.
+//
+// NOTE: Unlike Resolve, it will iterate the whole resolver tree against the given value, try to
+// access each corresponding field. Even scan fails on one of the fields, it will continue to scan
+// the rest of the fields. The returned error can be a multi-error, which is of ScanErrors type, it
+// contains all the errors that occurred during the scan.
+func (r *Resolver) Scan(value any, opts ...Option) error {
+	if value == nil {
+		return fmt.Errorf("cannot scan nil value")
+	}
+
+	rv := reflect.ValueOf(value)
+	if rv.Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	if rv.Type() != r.Type {
+		return fmt.Errorf("%w: cannot scan value of type %q, expecting type %q",
+			ErrTypeMismatch, rv.Type(), r.Type)
+	}
+
+	ctx := context.Background()
+	for _, opt := range opts {
+		ctx = opt.Apply(ctx)
+	}
+
+	sink := &scanErrorSink{}
+	r.Iterate(func(r *Resolver) error {
+		scan(r, ctx, rv, sink)
+		return nil
+	})
+
+	if len(sink.errors) > 0 {
+		return sink.errors
+	}
+	return nil
+}
+
+func scan(resolver *Resolver, ctx context.Context, rootValue reflect.Value, sink *scanErrorSink) {
+	if resolver.IsRoot() {
+		return // skip on root, which is the root struct itself
+	}
+
+	// Get the field value this resolver points to.
+	fv, err := rootValue.FieldByIndexErr(resolver.Index)
+	if err != nil {
+		err = fmt.Errorf("%w: %v", ErrScanNilField, err)
+		sink.Add(resolver, err)
+		return
+	}
+	if err := resolver.runDirectives(ctx, fv); err != nil {
+		sink.Add(resolver, err)
+	}
+}
+
+// Resolve resolves the struct type by traversing the tree in depth-first order. Typically it is
+// used to create a new struct instance by reading from some data source. This method always creates
+// a new value of the type the resolver holds. And runs the directives on each field.
+//
+// Use WithValue to create an Option that can add custom values to the context, the context can be
+// used by the directive executors during the resolution. Example:
+//
+//	type Settings struct {
+//	  DarkMode bool `owl:"env=MY_APP_DARK_MODE;cfg=appearance.dark_mode;default=false"`
+//	}
+//	resolver := owl.New(Settings{})
+//	settings, err := resolver.Resolve(WithValue("app_config", appConfig))
+//
+// NOTE: while iterating the tree, if resolving a field fails, the iteration will be
+// stopped and the error will be returned.
 func (r *Resolver) Resolve(opts ...Option) (reflect.Value, error) {
 	ctx := context.Background()
 	for _, opt := range opts {
@@ -198,10 +273,12 @@ func (root *Resolver) resolve(ctx context.Context, rootValue reflect.Value) erro
 		}
 
 		for _, child := range root.Children {
-			if err := child.resolve(ctx, underlyingValue.Elem().Field(child.Index).Addr()); err != nil {
+			if err := child.resolve(ctx, underlyingValue.Elem().Field(child.Index[len(child.Index)-1]).Addr()); err != nil {
 				return &ResolveError{
-					Err:      err,
-					Resolver: child,
+					fieldError: fieldError{
+						Err:      err,
+						Resolver: child,
+					},
 				}
 			}
 		}
@@ -282,7 +359,7 @@ func buildResolver(typ reflect.Type, field reflect.StructField, parent *Resolver
 	root := &Resolver{
 		Type:    typ,
 		Field:   field,
-		Index:   -1,
+		Index:   []int{},
 		Parent:  parent,
 		Context: context.Background(),
 	}
@@ -294,6 +371,7 @@ func buildResolver(typ reflect.Type, field reflect.StructField, parent *Resolver
 		}
 		root.Directives = directives
 		root.Path = append(root.Parent.Path, field.Name)
+		root.Index = append(root.Parent.Index, field.Index...)
 	}
 
 	if typ.Kind() == reflect.Ptr {
@@ -315,7 +393,6 @@ func buildResolver(typ reflect.Type, field reflect.StructField, parent *Resolver
 				path := append(root.Path, field.Name)
 				return nil, fmt.Errorf("build resolver for %q failed: %w", strings.Join(path, "."), err)
 			}
-			child.Index = i
 
 			// Skip the field if it has no children and no directives.
 			if len(child.Children) > 0 || len(child.Directives) > 0 {
