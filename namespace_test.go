@@ -25,30 +25,30 @@ func TestNamespace(t *testing.T) {
 
 	ns.RegisterDirectiveExecutor("foo", DirectiveExecutorFunc(exeFoo))
 	assert.Equal(ns.LookupExecutor("foo").Execute(nil), errFoo)
-	assert.PanicsWithError(duplicateExecutor("foo").Error(), func() {
+	assert.PanicsWithError("owl: "+duplicateExecutor("foo").Error(), func() {
 		ns.RegisterDirectiveExecutor("foo", DirectiveExecutorFunc(exeFoo))
 	})
 
 	ns.RegisterDirectiveExecutor("bar", DirectiveExecutorFunc(exeBar))
 	assert.Equal(ns.LookupExecutor("bar").Execute(nil), errBar)
-	assert.PanicsWithError(duplicateExecutor("bar").Error(), func() {
+	assert.PanicsWithError("owl: "+duplicateExecutor("bar").Error(), func() {
 		ns.RegisterDirectiveExecutor("bar", DirectiveExecutorFunc(exeBar))
 	})
 
-	ns.ReplaceDirectiveExecutor("foo", DirectiveExecutorFunc(exeFoo))
+	ns.RegisterDirectiveExecutor("foo", DirectiveExecutorFunc(exeFoo), true)
 	assert.Equal(ns.LookupExecutor("foo").Execute(nil), errFoo)
-	ns.ReplaceDirectiveExecutor("foo", DirectiveExecutorFunc(exeBar))
+	ns.RegisterDirectiveExecutor("foo", DirectiveExecutorFunc(exeBar), true)
 	assert.Equal(ns.LookupExecutor("foo").Execute(nil), errBar)
 }
 
 func TestNamespace_RegisterNilExecutor(t *testing.T) {
-	assert.PanicsWithError(t, nilExecutor("foo").Error(), func() {
+	assert.PanicsWithError(t, "owl: "+nilExecutor("foo").Error(), func() {
 		NewNamespace().RegisterDirectiveExecutor("foo", nil)
 	})
 }
 
 func TestNamespace_RegisterInvalidName(t *testing.T) {
-	assert.PanicsWithError(t, invalidDirectiveName(".foo").Error(), func() {
+	assert.PanicsWithError(t, "owl: "+invalidDirectiveName(".foo").Error(), func() {
 		NewNamespace().RegisterDirectiveExecutor(".foo", DirectiveExecutorFunc(exeFoo))
 	})
 }
@@ -56,10 +56,10 @@ func TestNamespace_RegisterInvalidName(t *testing.T) {
 func TestDefaultNamespace(t *testing.T) {
 	RegisterDirectiveExecutor("foo", DirectiveExecutorFunc(exeFoo))
 	assert.Equal(t, LookupExecutor("foo").Execute(nil), errFoo)
-	assert.PanicsWithError(t, duplicateExecutor("foo").Error(), func() {
+	assert.PanicsWithError(t, "owl: "+duplicateExecutor("foo").Error(), func() {
 		RegisterDirectiveExecutor("foo", DirectiveExecutorFunc(exeFoo))
 	})
 
-	ReplaceDirectiveExecutor("foo", DirectiveExecutorFunc(exeBar))
+	RegisterDirectiveExecutor("foo", DirectiveExecutorFunc(exeBar), true)
 	assert.Equal(t, LookupExecutor("foo").Execute(nil), errBar)
 }

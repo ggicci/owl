@@ -265,7 +265,7 @@ func TestNew_ParsingDirectives_DuplicateDirectives(t *testing.T) {
 func TestNew_OptionNilNamespace(t *testing.T) {
 	resolver, err := owl.New(struct{}{}, owl.WithNamespace(nil))
 	assert.Nil(t, resolver)
-	assert.ErrorIs(t, err, owl.ErrNilNamespace)
+	assert.ErrorContains(t, err, "nil namespace")
 }
 
 func TestNew_OptionCustomValue(t *testing.T) {
@@ -595,6 +595,17 @@ func TestScan_withOpts(t *testing.T) {
 
 	err = resolver.Scan(User{}, owl.WithValue("hello", "golang"))
 	assert.ErrorContains(t, err, "unexpected context value")
+}
+
+func TestScan_overrideNamespace(t *testing.T) {
+	resolver, err := owl.New(User{}) // using default namespace
+	assert.NoError(t, err)
+	err = resolver.Scan(User{})
+	assert.Error(t, err) // should fail because default namespace has no directive executors
+
+	ns, _ := createNsForTracking()
+	err = resolver.Scan(User{}, owl.WithNamespace(ns))
+	assert.NoError(t, err) // should success because namespace is overrided
 }
 
 func TestScan_onNilValue(t *testing.T) {
