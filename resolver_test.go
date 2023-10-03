@@ -629,11 +629,8 @@ func TestScan_ErrMissingExecutor(t *testing.T) {
 	assert.NoError(t, err)
 
 	err = resolver.Scan(User{})
-	assert.Error(t, err)
-	var se owl.ScanErrors
-	assert.ErrorAs(t, err, &se)
-	assert.Len(t, se, 3)
-	assert.ErrorIs(t, se[0], owl.ErrMissingExecutor)
+	assert.ErrorIs(t, err, owl.ErrMissingExecutor)
+	assert.Len(t, err.(interface{ Unwrap() []error }).Unwrap(), 3)
 }
 
 func TestScan_NestedStruct(t *testing.T) {
@@ -683,9 +680,7 @@ func TestScan_NestedStruct_ScanErrors_executeDirectiveFailed(t *testing.T) {
 	err = resolver.Scan(form)
 	assert.Error(t, err)
 	assert.ErrorContains(t, err, "TestScan_NestedStruct_ScanErrors")
-	var se owl.ScanErrors
-	assert.ErrorAs(t, err, &se)
-	assert.Len(t, se, 5)
+	assert.Len(t, err.(interface{ Unwrap() []error }).Unwrap(), 5)
 }
 
 func TestScan_NestedStruct_ScanErrors_ErrScanNilField(t *testing.T) {
@@ -698,10 +693,8 @@ func TestScan_NestedStruct_ScanErrors_ErrScanNilField(t *testing.T) {
 
 	form := &MyUserSignUpForm{User: nil, Token: "123456"}
 	err = resolver.Scan(form)
-	var se owl.ScanErrors
-	assert.ErrorAs(t, err, &se)
-	assert.Len(t, se, 3) // User has 3 fields that defined owl directives.
-	assert.ErrorIs(t, se[0], owl.ErrScanNilField)
+	assert.ErrorIs(t, err, owl.ErrScanNilField)
+	assert.Len(t, err.(interface{ Unwrap() []error }).Unwrap(), 3) // User has 3 fields that defined owl directives.
 }
 
 func TestIterate(t *testing.T) {
