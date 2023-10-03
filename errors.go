@@ -3,7 +3,6 @@ package owl
 import (
 	"errors"
 	"fmt"
-	"strings"
 )
 
 var (
@@ -47,24 +46,6 @@ func (e *ScanError) Error() string {
 	return fmt.Sprintf("scan field %q failed: %s", e.Resolver.String(), e.Err)
 }
 
-type ScanErrors []*ScanError
-
-func (e ScanErrors) Error() string {
-	var errs []string
-	pe := e
-	if len(e) > 3 {
-		pe = e[:3]
-	}
-	for _, se := range pe {
-		errs = append(errs, se.Error())
-	}
-	rest := len(e) - 3
-	if rest > 0 {
-		errs = append(errs, fmt.Sprintf("...(%d more)", rest))
-	}
-	return fmt.Sprintf("scan errors: %s", strings.Join(errs, "; "))
-}
-
 type fieldError struct {
 	Err      error
 	Resolver *Resolver
@@ -91,17 +72,4 @@ func (e *DirectiveExecutionError) Error() string {
 
 func (e *DirectiveExecutionError) Unwrap() error {
 	return e.Err
-}
-
-type scanErrorSink struct {
-	errors ScanErrors
-}
-
-func (es *scanErrorSink) Add(resolver *Resolver, err error) {
-	es.errors = append(es.errors, &ScanError{
-		fieldError: fieldError{
-			Err:      err,
-			Resolver: resolver,
-		},
-	})
 }

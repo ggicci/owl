@@ -181,10 +181,11 @@ func iterateResolverTree(root *Resolver, fn func(*Resolver) error) error {
 // Use WithValue to create an Option that can add custom values to the context, the context can be
 // used by the directive executors during the resolution.
 //
-// NOTE: Unlike Resolve, it will iterate the whole resolver tree against the given value, try to
-// access each corresponding field. Even scan fails on one of the fields, it will continue to scan
-// the rest of the fields. The returned error can be a multi-error, which is of ScanErrors type, it
-// contains all the errors that occurred during the scan.
+// NOTE: Unlike Resolve, it will iterate the whole resolver tree against the given
+// value, try to access each corresponding field. Even scan fails on one of the fields,
+// it will continue to scan the rest of the fields. The returned error can be a
+// multi-error combined by errors.Join, which contains all the errors that occurred
+// during the scan.
 func (r *Resolver) Scan(value any, opts ...Option) error {
 	if value == nil {
 		return fmt.Errorf("cannot scan nil value")
@@ -204,33 +205,42 @@ func (r *Resolver) Scan(value any, opts ...Option) error {
 		ctx = opt.Apply(ctx)
 	}
 
-	sink := &scanErrorSink{}
+	var errs []error
 	r.Iterate(func(r *Resolver) error {
-		scan(r, ctx, rv, sink)
+		errs = append(errs, scan(r, ctx, rv))
 		return nil
 	})
 
-	if len(sink.errors) > 0 {
-		return sink.errors
-	}
-	return nil
+	return errors.Join(errs...)
 }
 
-func scan(resolver *Resolver, ctx context.Context, rootValue reflect.Value, sink *scanErrorSink) {
+func scan(resolver *Resolver, ctx context.Context, rootValue reflect.Value) error {
 	if resolver.IsRoot() {
-		return // skip on root, which is the root struct itself
+		return nil // skip on root, which is the root struct itself
 	}
 
 	// Get the field value this resolver points to.
 	fv, err := rootValue.FieldByIndexErr(resolver.Index)
 	if err != nil {
-		err = fmt.Errorf("%w: %v", ErrScanNilField, err)
-		sink.Add(resolver, err)
-		return
+		return &ScanError{
+			fieldError: fieldError{
+				Err:      fmt.Errorf("%w: %v", ErrScanNilField, err),
+				Resolver: resolver,
+			},
+		}
 	}
+
+	// Run directives on the field.
 	if err := resolver.runDirectives(ctx, fv); err != nil {
-		sink.Add(resolver, err)
+		return &ScanError{
+			fieldError: fieldError{
+				Err:      err,
+				Resolver: resolver,
+			},
+		}
 	}
+
+	return nil
 }
 
 // Resolve resolves the struct type by traversing the tree in depth-first order. Typically it is
