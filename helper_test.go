@@ -128,8 +128,8 @@ func (e *EchoExecutor) Execute(ctx *owl.DirectiveRuntime) error {
 	return e.ThrowError
 }
 
-func createNsForTracking() (*owl.Namespace, *ExecutionTracker) {
-	return createNsForTrackingCtor(nil, nil)
+func createNsForTracking(keys ...string) (*owl.Namespace, *ExecutionTracker) {
+	return createNsForTrackingCtor(nil, nil, keys...)
 }
 
 func createNsForTrackingWithError(throwError error) (*owl.Namespace, *ExecutionTracker) {
@@ -140,11 +140,12 @@ func createNsForTrackingWithContextVerifier(verifier *ContextVerifier) (*owl.Nam
 	return createNsForTrackingCtor(nil, verifier)
 }
 
-func createNsForTrackingCtor(throwError error, verifier *ContextVerifier) (*owl.Namespace, *ExecutionTracker) {
-	tracker := NewExecutionTracker()
+func createNsForTrackingCtor(throwError error, verifier *ContextVerifier, keys ...string) (*owl.Namespace, *ExecutionTracker) {
 	ns := owl.NewNamespace()
-	ns.RegisterDirectiveExecutor("form", NewEchoExecutor(tracker, "form", throwError, verifier))
-	ns.RegisterDirectiveExecutor("default", NewEchoExecutor(tracker, "default", throwError, verifier))
-	ns.RegisterDirectiveExecutor("env", NewEchoExecutor(tracker, "env", throwError, verifier))
+	tracker := NewExecutionTracker()
+	keys = append(keys, "form", "env", "default")
+	for _, key := range keys {
+		ns.RegisterDirectiveExecutor(key, NewEchoExecutor(tracker, key, throwError, verifier), true)
+	}
 	return ns, tracker
 }

@@ -39,23 +39,15 @@ type expectedResolver struct {
 
 type BuildResolverTreeTestSuite struct {
 	suite.Suite
-	inputValue interface{}
-	expected   []*expectedResolver
-	tree       *owl.Resolver
+	expected []*expectedResolver
+	tree     *owl.Resolver
 }
 
-func NewBuildResolverTreeTestSuite(inputValue interface{}, expected []*expectedResolver) *BuildResolverTreeTestSuite {
+func NewBuildResolverTreeTestSuite(tree *owl.Resolver, expected []*expectedResolver) *BuildResolverTreeTestSuite {
 	return &BuildResolverTreeTestSuite{
-		inputValue: inputValue,
-		expected:   expected,
+		expected: expected,
+		tree:     tree,
 	}
-}
-
-func (s *BuildResolverTreeTestSuite) SetupTest() {
-	tree, err := owl.New(s.inputValue)
-	assert.NoError(s.T(), err)
-	assert.NotNil(s.T(), tree)
-	s.tree = tree
 }
 
 func (s *BuildResolverTreeTestSuite) Test_0_Lookup_IsLeaf() {
@@ -84,8 +76,12 @@ func (s *BuildResolverTreeTestSuite) Test_1_GetDirective() {
 }
 
 func TestNew_NormalCasesSuites(t *testing.T) {
+	tree, err := owl.New(Pagination{})
+	assert.NoError(t, err)
+	assert.NotNil(t, tree)
+
 	suite.Run(t, NewBuildResolverTreeTestSuite(
-		Pagination{},
+		tree,
 		[]*expectedResolver{
 			{
 				Index:      []int{0},
@@ -108,8 +104,11 @@ func TestNew_NormalCasesSuites(t *testing.T) {
 		},
 	))
 
+	tree, err = owl.New(UserSignUpForm{})
+	assert.NoError(t, err)
+	assert.NotNil(t, tree)
 	suite.Run(t, NewBuildResolverTreeTestSuite(
-		UserSignUpForm{},
+		tree,
 		[]*expectedResolver{
 			{
 				Index:      []int{0},
@@ -169,8 +168,12 @@ func TestNew_SkipFieldsHavingNoDirectives(t *testing.T) {
 		Pagination *Pagination // should not be ignored
 	}
 
+	tree, err := owl.New(AnotherForm{})
+	assert.NotNil(t, tree)
+	assert.NoError(t, err)
+
 	suite.Run(t, NewBuildResolverTreeTestSuite(
-		AnotherForm{},
+		tree,
 		[]*expectedResolver{
 			{
 				Index:      []int{},

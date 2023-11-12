@@ -45,7 +45,7 @@ func New(structValue interface{}, opts ...Option) (*Resolver, error) {
 	tree = tree.copy()
 
 	// Apply options, build the context for each resolver.
-	defaultOpts := []Option{WithNamespace(defaultNS)}
+	defaultOpts := []Option{WithNamespace(defaultNS), WithResolveNestedDirectives(true)}
 	opts = append(defaultOpts, opts...)
 	ctx := context.Background()
 	for _, opt := range opts {
@@ -53,14 +53,13 @@ func New(structValue interface{}, opts ...Option) (*Resolver, error) {
 	}
 
 	// Apply the context to each resolver.
-	tree.Iterate(func(r *Resolver) error {
+	iterateResolverTree(tree, func(r *Resolver) error {
 		r.Context = ctx
 		return nil
-	})
+	}, true)
 
-	// Validate the tree.
-	if err := tree.validate(); err != nil {
-		return nil, err
+	if tree.Namespace() == nil {
+		return nil, errors.New("nil namespace")
 	}
 
 	return tree, nil
@@ -78,14 +77,6 @@ func (r *Resolver) copy() *Resolver {
 		resolverCopy.Children[i].Parent = resolverCopy
 	}
 	return resolverCopy
-}
-
-func (r *Resolver) validate() error {
-	if r.Namespace() == nil {
-		return errors.New("nil namespace")
-	}
-
-	return nil
 }
 
 func (r *Resolver) IsRoot() bool {
@@ -132,6 +123,19 @@ func (r *Resolver) Lookup(path string) *Resolver {
 	return findResolver(r, paths)
 }
 
+func (r *Resolver) shouldResolveNestedDirectives() bool {
+	if r.IsRoot() {
+		return true // always resolve the root
+	}
+	if r.IsLeaf() {
+		return false // leaves have no children
+	}
+	if opt := r.Context.Value(ckResolveNestedDirectives); opt != nil {
+		return opt.(bool)
+	}
+	return true
+}
+
 func findResolver(root *Resolver, path []string) *Resolver {
 	if len(path) == 0 {
 		return root
@@ -150,24 +154,27 @@ func (r *Resolver) String() string {
 	return fmt.Sprintf("%s (%v)", r.PathString(), r.Type)
 }
 
-// Iterate visits the resolver tree by depth-first. The callback function
-// will be called for each field resolver. If the callback returns an error,
-// the iteration will be stopped.
+// Iterate visits the resolver tree by depth-first. The callback function will
+// be called on each field resolver. If option
+// WithResolveNestedDirectives(false) were applied when creating the Resolver,
+// it will skip the nested fields, even if the field has directives defined. The
+// iteration will stop if the callback returns an error.
 func (r *Resolver) Iterate(fn func(*Resolver) error) error {
-	return iterateResolverTree(r, fn)
+	return iterateResolverTree(r, fn, false)
 }
 
-func iterateResolverTree(root *Resolver, fn func(*Resolver) error) error {
+func iterateResolverTree(root *Resolver, fn func(*Resolver) error, forceIterate bool) error {
 	if err := fn(root); err != nil {
 		return err
 	}
 
-	for _, field := range root.Children {
-		if err := iterateResolverTree(field, fn); err != nil {
-			return err
+	if forceIterate || root.shouldResolveNestedDirectives() {
+		for _, field := range root.Children {
+			if err := iterateResolverTree(field, fn, forceIterate); err != nil {
+				return err
+			}
 		}
 	}
-
 	return nil
 }
 
@@ -274,7 +281,7 @@ func (root *Resolver) resolve(ctx context.Context, rootValue reflect.Value) erro
 	}
 
 	// Resolve the children fields.
-	if len(root.Children) > 0 {
+	if root.shouldResolveNestedDirectives() {
 		// If the root is a pointer, we need to allocate memory for it.
 		// We only expect it's a one-level pointer, e.g. *User, not **User.
 		underlyingValue := rootValue

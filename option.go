@@ -21,3 +21,7 @@ func WithValue(key, value interface{}) Option {
 func WithNamespace(ns *Namespace) Option {
 	return WithValue(ckNamespace, ns)
 }
+
+func WithResolveNestedDirectives(resolve bool) Option {
+	return WithValue(ckResolveNestedDirectives, resolve)
+}
