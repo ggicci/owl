@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/ggicci/owl"
@@ -838,6 +839,76 @@ func TestWithNestedDirectivesEnabled_definitionOfNestedDirectives(t *testing.T) 
 		owl.NewDirective("default", "unknown"),
 		owl.NewDirective("form", "birthday"),
 	}, tracker.Executed.ExecutedDirectives(), "tell the difference between nested and non-nested directives")
+}
+
+func TestWithDirectiveRunOrder_buildtime(t *testing.T) {
+	type Record struct {
+		R1 string `owl:"DOTA=2;csgo=1"`
+		R2 string `owl:"apple=green;pear;Grape=purple"`
+	}
+
+	tree, err := owl.New(Record{}, owl.WithDirectiveRunOrder(func(d1, d2 *owl.Directive) bool {
+		return strings.ToLower(d1.Name) < strings.ToLower(d2.Name) // sort directives by name (alphabetical order)
+	}))
+
+	assert.NoError(t, err)
+	assert.NotNil(t, tree)
+	suite.Run(t, NewBuildResolverTreeTestSuite(
+		tree,
+		[]*expectedResolver{
+			{
+				Index:      []int{0},
+				LookupPath: "R1",
+				NumFields:  0,
+				Directives: []*owl.Directive{
+					owl.NewDirective("csgo", "1"),
+					owl.NewDirective("DOTA", "2"),
+				},
+				Leaf: true,
+			},
+			{
+				Index:      []int{1},
+				LookupPath: "R2",
+				NumFields:  0,
+				Directives: []*owl.Directive{
+					owl.NewDirective("apple", "green"),
+					owl.NewDirective("Grape", "purple"),
+					owl.NewDirective("pear"),
+				},
+				Leaf: true,
+			},
+		},
+	))
+}
+
+func TestWithDirectiveRunOrder_runtime(t *testing.T) {
+	ns, tracker := createNsForTracking()
+	resolver, err := owl.New(User{}, owl.WithNamespace(ns))
+	assert.NoError(t, err)
+
+	form := &User{
+		Name:     "Ggicci",
+		Gender:   "male",
+		Birthday: "1991-11-10",
+	}
+
+	err = resolver.Scan(form, owl.WithDirectiveRunOrder(func(d1, d2 *owl.Directive) bool {
+		return d1.Name == "default" // makes default directive run first
+	}))
+	assert.NoError(t, err)
+
+	expected := ExecutedDataList{
+		{owl.NewDirective("form", "name"), "Ggicci"},
+
+		// The order of directives below is different from the order in the struct.
+		// Because we set the directive run order with WithDirectiveRunOrder when calling Scan.
+		// Now the default directive will run first, then the form directive.
+		{owl.NewDirective("default", "unknown"), "male"},
+		{owl.NewDirective("form", "gender"), "male"},
+
+		{owl.NewDirective("form", "birthday"), "1991-11-10"},
+	}
+	assert.Equal(t, expected, tracker.Executed)
 }
 
 func TestTreeDebugLayout(t *testing.T) {

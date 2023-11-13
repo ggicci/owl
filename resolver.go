@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -55,6 +56,7 @@ func New(structValue interface{}, opts ...Option) (*Resolver, error) {
 	// Apply the context to each resolver.
 	tree.Iterate(func(r *Resolver) error {
 		r.Context = ctx
+		r.Directives = getSortedDirectives(ctx, r.Directives)
 		return nil
 	})
 
@@ -317,7 +319,7 @@ func (r *Resolver) runDirectives(ctx context.Context, rv reflect.Value) error {
 		ns = nsOverriden.(*Namespace)
 	}
 
-	for _, directive := range r.Directives {
+	for _, directive := range getSortedDirectives(ctx, r.Directives) {
 		dirRuntime := &DirectiveRuntime{
 			Directive: directive,
 			Resolver:  r,
@@ -343,6 +345,18 @@ func (r *Resolver) runDirectives(ctx context.Context, rv reflect.Value) error {
 	}
 
 	return nil
+}
+
+func getSortedDirectives(ctx context.Context, directives []*Directive) []*Directive {
+	if directiveRunOrder := ctx.Value(ckDirectiveRunOrder); directiveRunOrder != nil {
+		var directivesCopy []*Directive
+		directivesCopy = append(directivesCopy, directives...)
+		sort.SliceStable(directivesCopy, func(i, j int) bool {
+			return directiveRunOrder.(DirectiveRunOrder)(directivesCopy[i], directivesCopy[j])
+		})
+		return directivesCopy
+	}
+	return directives // the original one
 }
 
 func (r *Resolver) DebugLayoutText(depth int) string {
