@@ -816,6 +816,30 @@ func TestIterate_CallbackFail(t *testing.T) {
 	assert.Equal(t, nil, resolver.Lookup("CSRFToken").Context.Value(ckHello))
 }
 
+func TestWithNestedDirectivesEnabled_definitionOfNestedDirectives(t *testing.T) {
+	type CreateUserRequest struct {
+		ApiVersion string `owl:"form=api_version"`
+		User
+	}
+
+	ns, tracker := createNsForTracking()
+	resolver, err := owl.New(CreateUserRequest{}, owl.WithNamespace(ns))
+	assert.NoError(t, err)
+	resolver.Resolve(owl.WithNestedDirectivesEnabled(false))
+
+	assert.Equal(t, []*owl.Directive{
+		owl.NewDirective("form", "api_version"),
+
+		// Below are NOT nested directives. Because the field User has no directives.
+		// If we added any directive to User, then the directives below will be nested directives.
+		// Ex: User `owl:"form=user"`
+		owl.NewDirective("form", "name"),
+		owl.NewDirective("form", "gender"),
+		owl.NewDirective("default", "unknown"),
+		owl.NewDirective("form", "birthday"),
+	}, tracker.Executed.ExecutedDirectives(), "tell the difference between nested and non-nested directives")
+}
+
 func TestTreeDebugLayout(t *testing.T) {
 	var (
 		tree *owl.Resolver

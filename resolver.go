@@ -144,6 +144,9 @@ func shouldResolveNestedDirectives(r *Resolver, ctx context.Context) bool {
 	if r.IsLeaf() {
 		return false // leaves have no children
 	}
+	if len(r.Directives) == 0 {
+		return true // go deeper if no directives on current field
+	}
 	if ctx != nil && ctx.Value(ckResolveNestedDirectives) != nil {
 		return ctx.Value(ckResolveNestedDirectives).(bool)
 	}
