@@ -147,6 +147,9 @@ func shouldResolveNestedDirectives(r *Resolver, ctx context.Context) bool {
 	if ctx != nil && ctx.Value(ckResolveNestedDirectives) != nil {
 		return ctx.Value(ckResolveNestedDirectives).(bool)
 	}
+	if r.Context.Value(ckResolveNestedDirectives) != nil {
+		return r.Context.Value(ckResolveNestedDirectives).(bool)
+	}
 	return true
 }
 
@@ -155,22 +158,21 @@ func (r *Resolver) String() string {
 }
 
 // Iterate visits the resolver tree by depth-first. The callback function will
-// be called on each field resolver. If option
-// WithResolveNestedDirectives(false) were applied when creating the Resolver,
-// it will skip the nested fields, even if the field has directives defined. The
-// iteration will stop if the callback returns an error.
+// be called on each field resolver. The iteration will stop if the callback
+// returns an error.
 func (r *Resolver) Iterate(fn func(*Resolver) error) error {
-	return iterateResolverTree(r, fn)
+	ctx := WithValue(ckResolveNestedDirectives, true).Apply(context.Background())
+	return r.iterate(ctx, fn)
 }
 
-func iterateResolverTree(root *Resolver, fn func(*Resolver) error) error {
+func (root *Resolver) iterate(ctx context.Context, fn func(*Resolver) error) error {
 	if err := fn(root); err != nil {
 		return err
 	}
 
-	if shouldResolveNestedDirectives(root, nil) {
+	if shouldResolveNestedDirectives(root, ctx) {
 		for _, field := range root.Children {
-			if err := iterateResolverTree(field, fn); err != nil {
+			if err := field.iterate(ctx, fn); err != nil {
 				return err
 			}
 		}
@@ -213,7 +215,7 @@ func (r *Resolver) Scan(value any, opts ...Option) error {
 	}
 
 	var errs []error
-	r.Iterate(func(r *Resolver) error {
+	r.iterate(ctx, func(r *Resolver) error {
 		errs = append(errs, scan(r, ctx, rv))
 		return nil
 	})

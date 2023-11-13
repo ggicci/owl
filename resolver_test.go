@@ -29,6 +29,55 @@ type UserSignUpForm struct {
 	CSRFToken string `owl:"form=csrf_token"`
 }
 
+var expectedUserSignUpFormResolverTree = []*expectedResolver{
+	{
+		Index:      []int{0},
+		LookupPath: "User",
+		NumFields:  3,
+		Directives: []*owl.Directive{
+			owl.NewDirective("form", "user"),
+		},
+		Leaf: false,
+	},
+	{
+		Index:      []int{0, 0},
+		LookupPath: "User.Name",
+		NumFields:  0,
+		Directives: []*owl.Directive{
+			owl.NewDirective("form", "name"),
+		},
+		Leaf: true,
+	},
+	{
+		Index:      []int{0, 1},
+		LookupPath: "User.Gender",
+		NumFields:  0,
+		Directives: []*owl.Directive{
+			owl.NewDirective("form", "gender"),
+			owl.NewDirective("default", "unknown"),
+		},
+		Leaf: true,
+	},
+	{
+		Index:      []int{0, 2},
+		LookupPath: "User.Birthday",
+		NumFields:  0,
+		Directives: []*owl.Directive{
+			owl.NewDirective("form", "birthday"),
+		},
+		Leaf: true,
+	},
+	{
+		Index:      []int{1},
+		LookupPath: "CSRFToken",
+		NumFields:  0,
+		Directives: []*owl.Directive{
+			owl.NewDirective("form", "csrf_token"),
+		},
+		Leaf: true,
+	},
+}
+
 type expectedResolver struct {
 	Index      []int
 	LookupPath string
@@ -109,54 +158,7 @@ func TestNew_NormalCasesSuites(t *testing.T) {
 	assert.NotNil(t, tree)
 	suite.Run(t, NewBuildResolverTreeTestSuite(
 		tree,
-		[]*expectedResolver{
-			{
-				Index:      []int{0},
-				LookupPath: "User",
-				NumFields:  3,
-				Directives: []*owl.Directive{
-					owl.NewDirective("form", "user"),
-				},
-				Leaf: false,
-			},
-			{
-				Index:      []int{0, 0},
-				LookupPath: "User.Name",
-				NumFields:  0,
-				Directives: []*owl.Directive{
-					owl.NewDirective("form", "name"),
-				},
-				Leaf: true,
-			},
-			{
-				Index:      []int{0, 1},
-				LookupPath: "User.Gender",
-				NumFields:  0,
-				Directives: []*owl.Directive{
-					owl.NewDirective("form", "gender"),
-					owl.NewDirective("default", "unknown"),
-				},
-				Leaf: true,
-			},
-			{
-				Index:      []int{0, 2},
-				LookupPath: "User.Birthday",
-				NumFields:  0,
-				Directives: []*owl.Directive{
-					owl.NewDirective("form", "birthday"),
-				},
-				Leaf: true,
-			},
-			{
-				Index:      []int{1},
-				LookupPath: "CSRFToken",
-				NumFields:  0,
-				Directives: []*owl.Directive{
-					owl.NewDirective("form", "csrf_token"),
-				},
-				Leaf: true,
-			},
-		},
+		expectedUserSignUpFormResolverTree,
 	))
 }
 
@@ -522,7 +524,7 @@ func TestResolve_DirectiveRuntimeContext(t *testing.T) {
 	assert.ErrorContains(t, err, "field is required")
 }
 
-func TestResolve_NestedExecution(t *testing.T) {
+func TestResolve_NestedDirectives(t *testing.T) {
 	type User struct {
 		Name string `owl:"env=OWL_TEST_NAME"`
 		Role string `owl:"env=OWL_TEST_ROLE"`
@@ -558,6 +560,45 @@ func TestResolve_NestedExecution(t *testing.T) {
 	gotValue, err := resolver.Resolve()
 	assert.NoError(t, err)
 	assert.Equal(t, expected, gotValue.Interface().(*Request))
+}
+
+func TestResolve_WithNestedDirectivesEnabled_false(t *testing.T) {
+	assert := assert.New(t)
+	ns, tracker := createNsForTracking()
+	tree, err := owl.New(
+		UserSignUpForm{},
+		owl.WithNamespace(ns),
+		owl.WithNestedDirectivesEnabled(false), // disable resolving nested directives
+	)
+	assert.NoError(err)
+	assert.NotNil(tree)
+
+	suite.Run(t, NewBuildResolverTreeTestSuite(
+		tree, expectedUserSignUpFormResolverTree,
+	))
+
+	// Won't resolve nested directives because WithNestedDirectivesEnabled(false).
+	_, err = tree.Resolve()
+	assert.NoError(err)
+	assert.Equal([]*owl.Directive{
+		owl.NewDirective("form", "user"),
+		owl.NewDirective("form", "csrf_token"),
+	}, tracker.Executed.ExecutedDirectives(), "should not resolve nested directives")
+
+	// The value set in New will be overridden by the value set in Resolve or Scan.
+	tracker.Reset()
+	_, err = tree.Resolve(owl.WithNestedDirectivesEnabled(true)) // override
+	assert.NoError(err)
+	assert.Equal([]*owl.Directive{
+		owl.NewDirective("form", "user"),
+		// User nested directives.
+		owl.NewDirective("form", "name"),
+		owl.NewDirective("form", "gender"),
+		owl.NewDirective("default", "unknown"),
+		owl.NewDirective("form", "birthday"),
+
+		owl.NewDirective("form", "csrf_token"),
+	}, tracker.Executed.ExecutedDirectives(), "should resolve nested directives")
 }
 
 func TestScan(t *testing.T) {
@@ -636,7 +677,7 @@ func TestScan_ErrMissingExecutor(t *testing.T) {
 	assert.Len(t, err.(interface{ Unwrap() []error }).Unwrap(), 3)
 }
 
-func TestScan_NestedStruct(t *testing.T) {
+func TestScan_NestedDirectives(t *testing.T) {
 	ns, tracker := createNsForTracking()
 	resolver, err := owl.New(UserSignUpForm{}, owl.WithNamespace(ns))
 	assert.NoError(t, err)
@@ -666,8 +707,39 @@ func TestScan_NestedStruct(t *testing.T) {
 	assert.Equal(t, expected, tracker.Executed)
 }
 
-func TestScan_NestedStruct_ScanErrors_executeDirectiveFailed(t *testing.T) {
-	ns, _ := createNsForTrackingWithError(errors.New("TestScan_NestedStruct_ScanErrors"))
+func TestScan_WithNestedDirectivesEnabled_false(t *testing.T) {
+	ns, tracker := createNsForTracking()
+	resolver, err := owl.New(
+		UserSignUpForm{},
+		owl.WithNamespace(ns),
+		owl.WithNestedDirectivesEnabled(false), // disable resolving nested directives
+	)
+	assert.NoError(t, err)
+
+	form := &UserSignUpForm{
+		User: User{
+			Name:     "Ggicci",
+			Gender:   "male",
+			Birthday: "1991-11-10",
+		},
+		CSRFToken: "123456",
+	}
+
+	expected := ExecutedDataList{
+		{owl.NewDirective("form", "user"), form.User},
+		// Nested directives are not resolved:
+		// {owl.NewDirective("form", "name"), "Ggicci"},
+		// ...
+		{owl.NewDirective("form", "csrf_token"), "123456"},
+	}
+
+	err = resolver.Scan(form)
+	assert.NoError(t, err)
+	assert.Equal(t, expected, tracker.Executed)
+}
+
+func TestScan_NestedDirectives_ScanErrors_executeDirectiveFailed(t *testing.T) {
+	ns, _ := createNsForTrackingWithError(errors.New("TestScan_NestedDirectives_ScanErrors"))
 	resolver, err := owl.New(UserSignUpForm{}, owl.WithNamespace(ns))
 	assert.NoError(t, err)
 
@@ -682,11 +754,11 @@ func TestScan_NestedStruct_ScanErrors_executeDirectiveFailed(t *testing.T) {
 
 	err = resolver.Scan(form)
 	assert.Error(t, err)
-	assert.ErrorContains(t, err, "TestScan_NestedStruct_ScanErrors")
+	assert.ErrorContains(t, err, "TestScan_NestedDirectives_ScanErrors")
 	assert.Len(t, err.(interface{ Unwrap() []error }).Unwrap(), 5)
 }
 
-func TestScan_NestedStruct_ScanErrors_ErrScanNilField(t *testing.T) {
+func TestScan_NestedDirectives_ScanErrors_ErrScanNilField(t *testing.T) {
 	type MyUserSignUpForm struct {
 		User  *User
 		Token string
