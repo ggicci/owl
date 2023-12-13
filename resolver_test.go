@@ -248,6 +248,14 @@ func TestNew_WithNonStruct(t *testing.T) {
 	assert.ErrorContains(t, err, "non-struct type")
 }
 
+func TestNew_WithRecursion(t *testing.T) {
+	type RecursiveRef struct {
+		Loop *RecursiveRef
+	}
+	_, err := owl.New(RecursiveRef{})
+	assert.NoError(t, err)
+}
+
 func TestNew_ParsingDirectives_InvalidName(t *testing.T) {
 	resolver, err := owl.New(struct {
 		Invalid string `owl:"invalid/name"`
