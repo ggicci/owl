@@ -429,6 +429,9 @@ func buildResolver(typ reflect.Type, field reflect.StructField, parent *Resolver
 			if !field.IsExported() {
 				continue
 			}
+			if field.Type == root.Type {
+				continue
+			}
 
 			child, err := buildResolver(field.Type, field, root)
 			if err != nil {
