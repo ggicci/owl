@@ -66,3 +66,11 @@ func TestParseDirective(t *testing.T) {
 		assert.ErrorIs(t, err, testcase.err)
 	}
 }
+
+func TestDirective_String(t *testing.T) {
+	d := owl.NewDirective("form", "page", "page_index")
+	assert.Equal(t, "form=page,page_index", d.String())
+
+	d = owl.NewDirective("required")
+	assert.Equal(t, "required", d.String())
+}

@@ -182,7 +182,7 @@ func TestNew_SkipFieldsHavingNoDirectives(t *testing.T) {
 				Index:      []int{},
 				LookupPath: "",
 				NumFields:  3,
-				Directives: nil,
+				Directives: []*owl.Directive{},
 				Leaf:       false,
 			},
 			{
@@ -206,7 +206,7 @@ func TestNew_SkipFieldsHavingNoDirectives(t *testing.T) {
 				Index:      []int{3}, // Pagination is the 4th field, Hidden is the 3rd field.
 				LookupPath: "Pagination",
 				NumFields:  2,
-				Directives: nil,
+				Directives: []*owl.Directive{},
 				Leaf:       false,
 			},
 			{
