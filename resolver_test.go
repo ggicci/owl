@@ -374,16 +374,24 @@ func TestResolve_SimpleFlatStruct(t *testing.T) {
 
 	resolver, err := owl.New(GenerateAccessTokenRequest{}, owl.WithNamespace(ns))
 	assert.NoError(err)
-
-	_, err = resolver.Resolve()
-	assert.NoError(err)
-
-	assert.Equal([]*owl.Directive{
+	expectedExecutedDirectives := []*owl.Directive{
 		owl.NewDirective("env", "ACCESS_TOKEN_KEY_GENERATION_KEY"),
 		owl.NewDirective("form", "username"),
 		owl.NewDirective("form", "expiry"),
 		owl.NewDirective("default", "3600"),
-	}, tracker.Executed.ExecutedDirectives(), "should execute all directives in order")
+	}
+
+	// Resolve
+	_, err = resolver.Resolve()
+	assert.NoError(err)
+	assert.Equal(expectedExecutedDirectives, tracker.Executed.ExecutedDirectives(), "should execute all directives in order")
+
+	// ResolveTo
+	tracker.Reset()
+	var targetValue = new(GenerateAccessTokenRequest)
+	err = resolver.ResolveTo(targetValue)
+	assert.NoError(err)
+	assert.Equal(expectedExecutedDirectives, tracker.Executed.ExecutedDirectives(), "should execute all directives in order")
 }
 
 func TestResolve_EmbeddedStruct(t *testing.T) {
@@ -402,18 +410,26 @@ func TestResolve_EmbeddedStruct(t *testing.T) {
 
 	resolver, err := owl.New(UserListQuery{}, owl.WithNamespace(ns))
 	assert.NoError(err)
-
-	_, err = resolver.Resolve()
-	assert.NoError(err)
-
-	assert.Equal([]*owl.Directive{
+	expectedExecutedDirectives := []*owl.Directive{
 		owl.NewDirective("form", "gender"),
 		owl.NewDirective("form", "age", "age[]"),
 		owl.NewDirective("default", "18", "999"),
 		owl.NewDirective("form", "roles", "roles[]"),
 		owl.NewDirective("form", "page"),
 		owl.NewDirective("form", "size"),
-	}, tracker.Executed.ExecutedDirectives(), "should execute all directives in order")
+	}
+
+	// Resolve
+	_, err = resolver.Resolve()
+	assert.NoError(err)
+	assert.Equal(expectedExecutedDirectives, tracker.Executed.ExecutedDirectives(), "should execute all directives in order")
+
+	// ResolveTo
+	tracker.Reset()
+	var targetValue = new(UserListQuery)
+	err = resolver.ResolveTo(targetValue)
+	assert.NoError(err)
+	assert.Equal(expectedExecutedDirectives, tracker.Executed.ExecutedDirectives(), "should execute all directives in order")
 }
 
 func TestResolve_UnexportedField(t *testing.T) {
@@ -607,6 +623,102 @@ func TestResolve_WithNestedDirectivesEnabled_false(t *testing.T) {
 
 		owl.NewDirective("form", "csrf_token"),
 	}, tracker.Executed.ExecutedDirectives(), "should resolve nested directives")
+}
+
+func TestResolveTo_InstantializeOnlyNilPointerForNestedStruct(t *testing.T) {
+	type Owner struct {
+		Type string `owl:"env=type"`
+		Name string `owl:"env=name"`
+	}
+
+	type AddOwnershipRequest struct {
+		ResourceId string `owl:"env=resource_id"`
+		Owner      *Owner
+	}
+
+	ns := owl.NewNamespace()
+	ns.RegisterDirectiveExecutor("env", owl.DirectiveExecutorFunc(exeEnvReader))
+	resolver, err := owl.New(AddOwnershipRequest{}, owl.WithNamespace(ns))
+	assert.NoError(t, err)
+
+	os.Setenv("type", "usergroup")
+	os.Setenv("name", "admin")
+	os.Setenv("resource_id", "123")
+
+	useOwner := &Owner{}
+	reqWithOwnerInstantiated := &AddOwnershipRequest{
+		ResourceId: "",
+		Owner:      useOwner,
+	}
+	err = resolver.ResolveTo(reqWithOwnerInstantiated)
+	assert.NoError(t, err)
+
+	// The Owner field is already instantiated, so we only populate the fields,
+	// but not create a new instance and assign it to the Owner field.
+	assert.Same(t, useOwner, reqWithOwnerInstantiated.Owner)
+	assert.Equal(t, "usergroup", reqWithOwnerInstantiated.Owner.Type)
+	assert.Equal(t, "admin", reqWithOwnerInstantiated.Owner.Name)
+	assert.Equal(t, "123", reqWithOwnerInstantiated.ResourceId)
+
+	// The Owner field is nil, so we create a new instance when resolving.
+	reqWithOwnerNotInstantiated := &AddOwnershipRequest{
+		ResourceId: "",
+		Owner:      nil,
+	}
+	err = resolver.ResolveTo(reqWithOwnerNotInstantiated)
+	assert.NoError(t, err)
+	assert.Equal(t, &Owner{Type: "usergroup", Name: "admin"}, reqWithOwnerNotInstantiated.Owner)
+	assert.Equal(t, "123", reqWithOwnerNotInstantiated.ResourceId)
+}
+
+func TestResolveTo_PopulateFieldsOnDemand(t *testing.T) {
+	type User struct {
+		Name string `owl:"env=OWL_TEST_NAME"`
+	}
+
+	ns := owl.NewNamespace()
+	ns.RegisterDirectiveExecutor("env", owl.DirectiveExecutorFunc(exeEnvReader))
+	resolver, err := owl.New(User{}, owl.WithNamespace(ns))
+	assert.NoError(t, err)
+
+	user := &User{Name: "admin"}
+	err = resolver.ResolveTo(user)
+	assert.NoError(t, err)
+	assert.Equal(t, "admin", user.Name) // not changed
+
+	os.Setenv("OWL_TEST_NAME", "owl")
+	err = resolver.ResolveTo(user)
+	assert.NoError(t, err)
+	assert.Equal(t, "owl", user.Name) // changed
+}
+
+func TestResolveTo_ErrNilValue(t *testing.T) {
+	resolver, err := owl.New(User{})
+	assert.NoError(t, err)
+
+	err = resolver.ResolveTo(nil)
+	assert.ErrorContains(t, err, "nil")
+
+	err = resolver.ResolveTo((*User)(nil))
+	assert.ErrorContains(t, err, "nil pointer")
+}
+
+func TestResolveTo_ErrNonPointerValue(t *testing.T) {
+	resolver, err := owl.New(User{})
+	assert.NoError(t, err)
+
+	var user User
+	err = resolver.ResolveTo(user)
+	assert.ErrorContains(t, err, "non-pointer")
+}
+
+func TestResolveTo_ErrTypeMismatch(t *testing.T) {
+	resolver, err := owl.New(User{})
+	assert.NoError(t, err)
+
+	var user = new(Pagination)
+	err = resolver.ResolveTo(user)
+	assert.ErrorIs(t, err, owl.ErrTypeMismatch)
 }
 
 func TestScan(t *testing.T) {

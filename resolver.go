@@ -31,7 +31,8 @@ type Resolver struct {
 
 // New builds a resolver tree from a struct value. The given options will be
 // applied to all the resolvers. In the resolver tree, each node is also a
-// Resolver.
+// Resolver. Available options are WithNamespace, WithNestedDirectivesEnabled
+// and WithValue.
 func New(structValue interface{}, opts ...Option) (*Resolver, error) {
 	typ, err := reflectStructType(structValue)
 	if err != nil {
@@ -47,16 +48,7 @@ func New(structValue interface{}, opts ...Option) (*Resolver, error) {
 	// Apply options, build the context for each resolver.
 	defaultOpts := []Option{WithNamespace(defaultNS)}
 	opts = append(defaultOpts, opts...)
-	ctx := context.Background()
-	for _, opt := range opts {
-		ctx = opt.Apply(ctx)
-	}
-
-	// Apply the context to each resolver.
-	tree.Iterate(func(r *Resolver) error {
-		r.Context = ctx
-		return nil
-	})
+	tree.applyContext(buildContextWithOptionsApplied(context.Background(), opts...))
 
 	if tree.Namespace() == nil {
 		return nil, errors.New("nil namespace")
@@ -150,7 +142,7 @@ func findResolver(root *Resolver, path []string) *Resolver {
 	return nil
 }
 
-func shouldResolveNestedDirectives(r *Resolver, ctx context.Context) bool {
+func shouldResolveNestedDirectives(ctx context.Context, r *Resolver) bool {
 	if r.IsRoot() {
 		return true // always resolve the root
 	}
@@ -186,7 +178,7 @@ func (root *Resolver) iterate(ctx context.Context, fn func(*Resolver) error) err
 		return err
 	}
 
-	if shouldResolveNestedDirectives(root, ctx) {
+	if shouldResolveNestedDirectives(ctx, root) {
 		for _, field := range root.Children {
 			if err := field.iterate(ctx, fn); err != nil {
 				return err
@@ -194,6 +186,14 @@ func (root *Resolver) iterate(ctx context.Context, fn func(*Resolver) error) err
 		}
 	}
 	return nil
+}
+
+// applyContext applies the context to the resolver and its children.
+func (r *Resolver) applyContext(ctx context.Context) {
+	r.Iterate(func(x *Resolver) error {
+		x.Context = ctx
+		return nil
+	})
 }
 
 // Scan scans the struct value by traversing the fields in depth-first order. The value is required
@@ -204,7 +204,7 @@ func (root *Resolver) iterate(ctx context.Context, fn func(*Resolver) error) err
 // based on the struct value, etc.
 //
 // Use WithValue to create an Option that can add custom values to the context, the context can be
-// used by the directive executors during the resolution.
+// used by the directive executors during the scanning.
 //
 // NOTE: Unlike Resolve, it will iterate the whole resolver tree against the given
 // value, try to access each corresponding field. Even scan fails on one of the fields,
@@ -225,12 +225,8 @@ func (r *Resolver) Scan(value any, opts ...Option) error {
 			ErrTypeMismatch, rv.Type(), r.Type)
 	}
 
-	ctx := context.Background()
-	for _, opt := range opts {
-		ctx = opt.Apply(ctx)
-	}
-
 	var errs []error
+	ctx := buildContextWithOptionsApplied(context.Background(), opts...)
 	r.iterate(ctx, func(r *Resolver) error {
 		errs = append(errs, scan(r, ctx, rv))
 		return nil
@@ -283,15 +279,34 @@ func scan(resolver *Resolver, ctx context.Context, rootValue reflect.Value) erro
 //	resolver := owl.New(Settings{})
 //	settings, err := resolver.Resolve(WithValue("app_config", appConfig))
 //
-// NOTE: while iterating the tree, if resolving a field fails, the iteration
-// will be stopped and the error will be returned.
+// NOTE: while iterating the tree, if resolving a field failed, the iteration
+// will be stopped immediately and the error will be returned.
 func (r *Resolver) Resolve(opts ...Option) (reflect.Value, error) {
-	ctx := context.Background()
-	for _, opt := range opts {
-		ctx = opt.Apply(ctx)
-	}
-	rootValue := reflect.New(r.Type)
+	ctx := buildContextWithOptionsApplied(context.Background(), opts...)
+	rootValue := reflect.New(r.Type) // Type:User -> rootValue:*User
 	return rootValue, r.resolve(ctx, rootValue)
+}
+
+// ResolveTo works like Resolve, but it resolves the struct value to the given
+// pointer value instead of creating a new value. The pointer value must be
+// non-nil and a pointer to the type the resolver holds.
+func (r *Resolver) ResolveTo(value any, opts ...Option) error {
+	if value == nil {
+		return fmt.Errorf("cannot resolve to nil value")
+	}
+	rv := reflect.ValueOf(value)
+	if rv.Kind() != reflect.Ptr {
+		return fmt.Errorf("cannot resolve to non-pointer value")
+	}
+	if rv.IsNil() {
+		return fmt.Errorf("cannot resolve to nil pointer value")
+	}
+	if rv.Type().Elem() != r.Type {
+		return fmt.Errorf("%w: cannot resolve to value of type %q, expecting type %q",
+			ErrTypeMismatch, rv.Type().Elem(), r.Type)
+	}
+	ctx := buildContextWithOptionsApplied(context.Background(), opts...)
+	return r.resolve(ctx, rv)
 }
 
 func (root *Resolver) resolve(ctx context.Context, rootValue reflect.Value) error {
@@ -301,17 +316,19 @@ func (root *Resolver) resolve(ctx context.Context, rootValue reflect.Value) erro
 	}
 
 	// Resolve the children fields.
-	if shouldResolveNestedDirectives(root, ctx) {
-		// If the root is a pointer, we need to allocate memory for it.
-		// We only expect it's a one-level pointer, e.g. *User, not **User.
-		underlyingValue := rootValue
+	if shouldResolveNestedDirectives(ctx, root) {
+		// If the root is a pointer, we need to allocate memory for it when it's
+		// not instantiated yet. We only expect it's a one-level pointer, e.g.
+		// *User, not **User.
+		underlying := rootValue
 		if root.Type.Kind() == reflect.Ptr {
-			underlyingValue = reflect.New(root.Type.Elem())
-			rootValue.Elem().Set(underlyingValue)
+			if rootValue.Elem().IsNil() { // instantiate the pointer on demand
+				rootValue.Elem().Set(reflect.New(root.Type.Elem()))
+			}
+			underlying = rootValue.Elem()
 		}
-
 		for _, child := range root.Children {
-			if err := child.resolve(ctx, underlyingValue.Elem().Field(child.Index[len(child.Index)-1]).Addr()); err != nil {
+			if err := child.resolve(ctx, underlying.Elem().Field(child.Index[len(child.Index)-1]).Addr()); err != nil {
 				return &ResolveError{
 					fieldError: fieldError{
 						Err:      err,
