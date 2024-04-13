@@ -456,6 +456,8 @@ func TestResolve_UnexportedField(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, "owl", gotUser.Name)
 	assert.Equal(t, "male", gotUser.Gender)
+
+	os.Clearenv()
 }
 
 func TestResolve_MissingExecutor(t *testing.T) {
@@ -584,6 +586,8 @@ func TestResolve_NestedDirectives(t *testing.T) {
 	gotValue, err := resolver.Resolve()
 	assert.NoError(t, err)
 	assert.Equal(t, expected, gotValue.Interface().(*Request))
+
+	os.Clearenv()
 }
 
 func TestResolve_WithNestedDirectivesEnabled_false(t *testing.T) {
@@ -669,6 +673,8 @@ func TestResolveTo_InstantializeOnlyNilPointerForNestedStruct(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, &Owner{Type: "usergroup", Name: "admin"}, reqWithOwnerNotInstantiated.Owner)
 	assert.Equal(t, "123", reqWithOwnerNotInstantiated.ResourceId)
+
+	os.Clearenv()
 }
 
 func TestResolveTo_PopulateFieldsOnDemand(t *testing.T) {
@@ -690,6 +696,7 @@ func TestResolveTo_PopulateFieldsOnDemand(t *testing.T) {
 	err = resolver.ResolveTo(user)
 	assert.NoError(t, err)
 	assert.Equal(t, "owl", user.Name) // changed
+	os.Clearenv()
 }
 
 func TestResolveTo_ErrNilValue(t *testing.T) {
