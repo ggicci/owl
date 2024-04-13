@@ -41,14 +41,3 @@ func WithValue(key, value interface{}) Option {
 func WithNestedDirectivesEnabled(resolve bool) Option {
 	return WithValue(ckResolveNestedDirectives, resolve)
 }
-
-type DirectiveRunOrder func(*Directive, *Directive) bool
-
-// WithDirectiveRunOrder sets the order of execution for directives.
-//
-// When used in New, the directives will be sorted at the tree building stage.
-//
-// When Used in Resolve or Scan, a copy of the directives will be sorted and used.
-func WithDirectiveRunOrder(runOrder DirectiveRunOrder) Option {
-	return WithValue(ckDirectiveRunOrder, runOrder)
-}

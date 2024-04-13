@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -56,7 +55,6 @@ func New(structValue interface{}, opts ...Option) (*Resolver, error) {
 	// Apply the context to each resolver.
 	tree.Iterate(func(r *Resolver) error {
 		r.Context = ctx
-		r.Directives = getSortedDirectives(ctx, r.Directives)
 		return nil
 	})
 
@@ -270,12 +268,14 @@ func scan(resolver *Resolver, ctx context.Context, rootValue reflect.Value) erro
 	return nil
 }
 
-// Resolve resolves the struct type by traversing the tree in depth-first order. Typically it is
-// used to create a new struct instance by reading from some data source. This method always creates
-// a new value of the type the resolver holds. And runs the directives on each field.
+// Resolve resolves the struct type by traversing the tree in depth-first order.
+// Typically it is used to create a new struct instance by reading from some
+// data source. This method always creates a new value of the type the resolver
+// holds. And runs the directives on each field.
 //
-// Use WithValue to create an Option that can add custom values to the context, the context can be
-// used by the directive executors during the resolution. Example:
+// Use WithValue to create an Option that can add custom values to the context,
+// the context can be used by the directive executors during the resolution.
+// Example:
 //
 //	type Settings struct {
 //	  DarkMode bool `owl:"env=MY_APP_DARK_MODE;cfg=appearance.dark_mode;default=false"`
@@ -283,8 +283,8 @@ func scan(resolver *Resolver, ctx context.Context, rootValue reflect.Value) erro
 //	resolver := owl.New(Settings{})
 //	settings, err := resolver.Resolve(WithValue("app_config", appConfig))
 //
-// NOTE: while iterating the tree, if resolving a field fails, the iteration will be
-// stopped and the error will be returned.
+// NOTE: while iterating the tree, if resolving a field fails, the iteration
+// will be stopped and the error will be returned.
 func (r *Resolver) Resolve(opts ...Option) (reflect.Value, error) {
 	ctx := context.Background()
 	for _, opt := range opts {
@@ -332,7 +332,7 @@ func (r *Resolver) runDirectives(ctx context.Context, rv reflect.Value) error {
 		ns = nsOverriden.(*Namespace)
 	}
 
-	for _, directive := range getSortedDirectives(ctx, r.Directives) {
+	for _, directive := range r.Directives {
 		dirRuntime := &DirectiveRuntime{
 			Directive: directive,
 			Resolver:  r,
@@ -358,18 +358,6 @@ func (r *Resolver) runDirectives(ctx context.Context, rv reflect.Value) error {
 	}
 
 	return nil
-}
-
-func getSortedDirectives(ctx context.Context, directives []*Directive) []*Directive {
-	if directiveRunOrder := ctx.Value(ckDirectiveRunOrder); directiveRunOrder != nil {
-		var directivesCopy []*Directive
-		directivesCopy = append(directivesCopy, directives...)
-		sort.SliceStable(directivesCopy, func(i, j int) bool {
-			return directiveRunOrder.(DirectiveRunOrder)(directivesCopy[i], directivesCopy[j])
-		})
-		return directivesCopy
-	}
-	return directives // the original one
 }
 
 func (r *Resolver) DebugLayoutText(depth int) string {
