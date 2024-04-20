@@ -290,25 +290,17 @@ func (r *Resolver) Resolve(opts ...Option) (reflect.Value, error) {
 // ResolveTo works like Resolve, but it resolves the struct value to the given
 // pointer value instead of creating a new value. The pointer value must be
 // non-nil and a pointer to the type the resolver holds.
-func (r *Resolver) ResolveTo(value any, opts ...Option) error {
-	if value == nil {
-		return fmt.Errorf("cannot resolve to nil value")
-	}
-	rv := reflect.ValueOf(value)
-	if rv.Kind() != reflect.Ptr {
-		return fmt.Errorf("cannot resolve to non-pointer value")
-	}
-	if rv.IsNil() {
-		return fmt.Errorf("cannot resolve to nil pointer value")
-	}
-	if rv.Type().Elem() != r.Type {
-		return fmt.Errorf("%w: cannot resolve to value of type %q, expecting type %q",
-			ErrTypeMismatch, rv.Type().Elem(), r.Type)
+func (r *Resolver) ResolveTo(value any, opts ...Option) (err error) {
+	rv, err := reflectResolveTargetValue(value, r.Type)
+	if err != nil {
+		return err
 	}
 	ctx := buildContextWithOptionsApplied(context.Background(), opts...)
-	return r.resolve(ctx, rv)
+	return r.resolve(ctx, rv.Addr())
 }
 
+// resolve runs the directives on the current field and resolves the children fields.
+// NOTE: rootValue must be a pointer to a type, i.e. *User, not User.
 func (root *Resolver) resolve(ctx context.Context, rootValue reflect.Value) error {
 	// Run the directives on current field.
 	if err := root.runDirectives(ctx, rootValue); err != nil {
@@ -425,9 +417,9 @@ func buildResolver(typ reflect.Type, field reflect.StructField, parent *Resolver
 	}
 
 	if !root.IsRoot() {
-		directives, err := parseDirectives(field.Tag.Get(Tag()))
+		directives, err := parseTag(field.Tag.Get(Tag()))
 		if err != nil {
-			return nil, fmt.Errorf("parse directives: %w", err)
+			return nil, fmt.Errorf("parse directives (tag): %w", err)
 		}
 		root.Directives = directives
 		root.Path = append(root.Parent.Path, field.Name)
@@ -466,6 +458,29 @@ func buildResolver(typ reflect.Type, field reflect.StructField, parent *Resolver
 	return root, nil
 }
 
+// parseTag creates a slice of Directive instances by parsing a struct tag.
+func parseTag(tag string) ([]*Directive, error) {
+	tag = strings.TrimSpace(tag)
+	var directives []*Directive
+	existed := make(map[string]bool)
+	for _, directive := range strings.Split(tag, ";") {
+		directive = strings.TrimSpace(directive)
+		if directive == "" {
+			continue
+		}
+		d, err := ParseDirective(directive)
+		if err != nil {
+			return nil, err
+		}
+		if existed[d.Name] {
+			return nil, duplicateDirective(d.Name)
+		}
+		existed[d.Name] = true
+		directives = append(directives, d)
+	}
+	return directives, nil
+}
+
 func reflectStructType(structValue interface{}) (reflect.Type, error) {
 	typ, ok := structValue.(reflect.Type)
 	if !ok {
@@ -487,24 +502,36 @@ func reflectStructType(structValue interface{}) (reflect.Type, error) {
 	return typ, nil
 }
 
-func parseDirectives(tag string) ([]*Directive, error) {
-	tag = strings.TrimSpace(tag)
-	var directives []*Directive
-	existed := make(map[string]bool)
-	for _, directive := range strings.Split(tag, ";") {
-		directive = strings.TrimSpace(directive)
-		if directive == "" {
-			continue
-		}
-		d, err := ParseDirective(directive)
-		if err != nil {
-			return nil, err
-		}
-		if existed[d.Name] {
-			return nil, duplicateDirective(d.Name)
-		}
-		existed[d.Name] = true
-		directives = append(directives, d)
+func reflectResolveTargetValue(value any, expectedType reflect.Type) (rv reflect.Value, err error) {
+	if value == nil {
+		return rv, fmt.Errorf("cannot resolve to nil value")
 	}
-	return directives, nil
+
+	rv = reflect.ValueOf(value)
+	if rv.Kind() != reflect.Pointer {
+		return rv, fmt.Errorf("cannot resolve to non-pointer value")
+	}
+
+	if rv, err = dereference(rv); err != nil {
+		return rv, fmt.Errorf("cannot resolve to nil pointer value")
+	}
+
+	if rv.Type() != expectedType {
+		return rv, fmt.Errorf("%w: cannot resolve to value of type %q, expecting type %q",
+			ErrTypeMismatch, rv.Type(), expectedType)
+	}
+
+	return rv, nil
+}
+
+// dereference returns the value that v points to, or an error if v is nil.
+// It can be multiple levels deep. e.g. T -> T, *T -> T; **T -> T, etc.
+func dereference(v reflect.Value) (reflect.Value, error) {
+	if v.Kind() != reflect.Pointer {
+		return v, nil
+	}
+	if v.IsNil() {
+		return v, errors.New("nil pointer")
+	}
+	return dereference(v.Elem())
 }

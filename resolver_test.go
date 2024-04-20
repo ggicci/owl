@@ -699,6 +699,38 @@ func TestResolveTo_PopulateFieldsOnDemand(t *testing.T) {
 	os.Clearenv()
 }
 
+func TestRevoleTo_MultiLevelPointer(t *testing.T) {
+	type User struct {
+		Name string `owl:"env=OWL_TEST_NAME"`
+	}
+
+	ns := owl.NewNamespace()
+	ns.RegisterDirectiveExecutor("env", owl.DirectiveExecutorFunc(exeEnvReader))
+	resolver, err := owl.New(User{}, owl.WithNamespace(ns))
+	assert.NoError(t, err)
+
+	var user = new(User)
+
+	// *T
+	os.Setenv("OWL_TEST_NAME", "owl")
+	assert.NoError(t, resolver.ResolveTo(user))
+	assert.Equal(t, "owl", user.Name)
+
+	// **T
+	os.Setenv("OWL_TEST_NAME", "golang")
+	assert.NoError(t, resolver.ResolveTo(&user))
+	assert.Equal(t, "golang", user.Name)
+
+	// ***T
+	var userPtr = &user
+	os.Setenv("OWL_TEST_NAME", "world")
+	assert.NoError(t, resolver.ResolveTo(&userPtr))
+	assert.Equal(t, "world", user.Name)
+	assert.Same(t, *userPtr, user)
+
+	os.Clearenv()
+}
+
 func TestResolveTo_ErrNilValue(t *testing.T) {
 	resolver, err := owl.New(User{})
 	assert.NoError(t, err)
