@@ -293,7 +293,7 @@ func (r *Resolver) Resolve(opts ...Option) (reflect.Value, error) {
 func (r *Resolver) ResolveTo(value any, opts ...Option) (err error) {
 	rv, err := reflectResolveTargetValue(value, r.Type)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrInvalidResolveTarget, err)
 	}
 	ctx := buildContextWithOptionsApplied(context.Background(), opts...)
 	return r.resolve(ctx, rv.Addr())
@@ -504,16 +504,16 @@ func reflectStructType(structValue interface{}) (reflect.Type, error) {
 
 func reflectResolveTargetValue(value any, expectedType reflect.Type) (rv reflect.Value, err error) {
 	if value == nil {
-		return rv, fmt.Errorf("cannot resolve to nil value")
+		return rv, errors.New("nil value")
 	}
 
 	rv = reflect.ValueOf(value)
 	if rv.Kind() != reflect.Pointer {
-		return rv, fmt.Errorf("cannot resolve to non-pointer value")
+		return rv, errors.New("non-pointer value")
 	}
 
 	if rv, err = dereference(rv); err != nil {
-		return rv, fmt.Errorf("cannot resolve to nil pointer value")
+		return rv, errors.New("nil pointer value")
 	}
 
 	if rv.Type() != expectedType {

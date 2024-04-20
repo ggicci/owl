@@ -737,9 +737,11 @@ func TestResolveTo_ErrNilValue(t *testing.T) {
 
 	err = resolver.ResolveTo(nil)
 	assert.ErrorContains(t, err, "nil")
+	assert.ErrorIs(t, err, owl.ErrInvalidResolveTarget)
 
 	err = resolver.ResolveTo((*User)(nil))
 	assert.ErrorContains(t, err, "nil pointer")
+	assert.ErrorIs(t, err, owl.ErrInvalidResolveTarget)
 }
 
 func TestResolveTo_ErrNonPointerValue(t *testing.T) {
@@ -749,6 +751,7 @@ func TestResolveTo_ErrNonPointerValue(t *testing.T) {
 	var user User
 	err = resolver.ResolveTo(user)
 	assert.ErrorContains(t, err, "non-pointer")
+	assert.ErrorIs(t, err, owl.ErrInvalidResolveTarget)
 }
 
 func TestResolveTo_ErrTypeMismatch(t *testing.T) {
@@ -758,6 +761,7 @@ func TestResolveTo_ErrTypeMismatch(t *testing.T) {
 	var user = new(Pagination)
 	err = resolver.ResolveTo(user)
 	assert.ErrorIs(t, err, owl.ErrTypeMismatch)
+	assert.ErrorIs(t, err, owl.ErrInvalidResolveTarget)
 }
 
 func TestScan(t *testing.T) {
