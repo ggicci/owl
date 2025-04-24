@@ -422,8 +422,8 @@ func buildResolver(typ reflect.Type, field reflect.StructField, parent *Resolver
 			return nil, fmt.Errorf("parse directives (tag): %w", err)
 		}
 		root.Directives = directives
-		root.Path = append(root.Parent.Path, field.Name)
-		root.Index = append(root.Parent.Index, field.Index...)
+		root.Path = append(cloneSlice(root.Parent.Path), field.Name)
+		root.Index = append(cloneSlice(root.Parent.Index), field.Index...)
 	}
 
 	if typ.Kind() == reflect.Ptr {
@@ -536,5 +536,12 @@ func dereference(v reflect.Value) (reflect.Value, error) {
 	if v.IsNil() {
 		return v, errors.New("nil pointer")
 	}
+
 	return dereference(v.Elem())
+}
+
+func cloneSlice[S ~[]E, E any](slice S) S {
+	clone := make(S, 0, len(slice))
+	clone = append(clone, slice...)
+	return clone
 }
