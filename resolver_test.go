@@ -1017,3 +1017,36 @@ func TestTreeDebugLayout(t *testing.T) {
 	assert.NoError(t, err)
 	fmt.Println(tree.DebugLayoutText(0))
 }
+
+func TestParseTag(t *testing.T) {
+	testcases := []struct {
+		content  string
+		expected []*owl.Directive
+		err      error
+	}{
+		{
+			content:  " Test  ; ;values= one, two ",
+			expected: []*owl.Directive{
+				owl.NewDirective("Test"),
+				owl.NewDirective("values", " one", " two"),
+			},
+			err:      nil,
+		},
+		{
+			content:  "duplicate;duplicate=another",
+			expected: nil,
+			err:      owl.ErrDuplicateDirective,
+		},
+		{
+			content:  "-",
+			expected: nil,
+			err:      owl.ErrInvalidDirectiveName,
+		},
+	}
+
+	for _, testcase := range testcases {
+		directives, err := owl.ParseTag(testcase.content)
+		assert.Equal(t, testcase.expected, directives)
+		assert.ErrorIs(t, err, testcase.err)
+	}
+}

@@ -417,7 +417,7 @@ func buildResolver(typ reflect.Type, field reflect.StructField, parent *Resolver
 	}
 
 	if !root.IsRoot() {
-		directives, err := parseTag(field.Tag.Get(Tag()))
+		directives, err := ParseTag(field.Tag.Get(Tag()))
 		if err != nil {
 			return nil, fmt.Errorf("parse directives (tag): %w", err)
 		}
@@ -458,8 +458,11 @@ func buildResolver(typ reflect.Type, field reflect.StructField, parent *Resolver
 	return root, nil
 }
 
-// parseTag creates a slice of Directive instances by parsing a struct tag.
-func parseTag(tag string) ([]*Directive, error) {
+// ParseTag creates a slice of Directive instances by parsing a struct tag.
+//
+// Runs ParseDirective() for all parts of a field's tag string (from a reflected ast.Field for example)
+// without having to parse a whole struct value using New().
+func ParseTag(tag string) ([]*Directive, error) {
 	tag = strings.TrimSpace(tag)
 	var directives []*Directive
 	existed := make(map[string]bool)
